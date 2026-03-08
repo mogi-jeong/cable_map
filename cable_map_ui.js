@@ -313,7 +313,7 @@
             showStatus('지도를 클릭해 경유점을 찍고, 도착 장비를 클릭하세요 (ESC=취소)');
             map.off('click', onMapClickForWaypoint);
             map.on('click', onMapClickForWaypoint);
-            kakao.maps.event.addListener(map._m, 'mousemove', onMapMousemoveForSnap);
+            window._mousemoveListener = NMaps.addListener(map._m, 'mousemove', onMapMousemoveForSnap);
         }
 
         // 두 좌표 간 거리(m)
@@ -339,18 +339,18 @@
         // 마우스 이동: 스냅 원 표시
         function onMapMousemoveForSnap(me) {
             if (!connectingMode) return;
-            const lat=me.latLng.getLat(), lng=me.latLng.getLng();
+            const lat=me.coord.lat(), lng=me.coord.lng();
             if (snapCircleOverlay) { snapCircleOverlay.setMap(null); snapCircleOverlay=null; }
             if (snapHighlight) { snapHighlight.setMap(null); snapHighlight=null; }
             const nearPole = findNearestPole(lat,lng);
-            snapCircleOverlay = new kakao.maps.Circle({
-                map:map._m, center:new kakao.maps.LatLng(lat,lng), radius:SNAP_RADIUS_M,
+            snapCircleOverlay = NMaps.Circle({
+                map:map._m, center:NMaps.LatLng(lat,lng), radius:SNAP_RADIUS_M,
                 strokeWeight:1, strokeColor:nearPole?'#00cc44':'#aaaaaa', strokeOpacity:0.8,
                 fillColor:nearPole?'#00cc44':'#cccccc', fillOpacity:0.15
             });
             if (nearPole) {
-                snapHighlight = new kakao.maps.Circle({
-                    map:map._m, center:new kakao.maps.LatLng(nearPole.lat,nearPole.lng), radius:3,
+                snapHighlight = NMaps.Circle({
+                    map:map._m, center:NMaps.LatLng(nearPole.lat,nearPole.lng), radius:3,
                     strokeWeight:2, strokeColor:'#00cc44', strokeOpacity:1,
                     fillColor:'#00cc44', fillOpacity:0.8
                 });
@@ -412,7 +412,7 @@
             if (previewPolyline) { map.removeLayer(previewPolyline); previewPolyline = null; }
             if (snapCircleOverlay) { snapCircleOverlay.setMap(null); snapCircleOverlay=null; }
             if (snapHighlight) { snapHighlight.setMap(null); snapHighlight=null; }
-            kakao.maps.event.removeListener(map._m, 'mousemove', onMapMousemoveForSnap);
+            NMaps.removeListener(window._mousemoveListener);
             map.off('click', onMapClickForWaypoint);
         }
         // 전체 초기화 (취소 시)
@@ -917,6 +917,7 @@
         let _waypointInsertConn = null;
         let _waypointInsertPath = null;
         let _waypointMapClickHandler = null;
+        let _waypointClickListener = null;
 
         function startWaypointInsertModeById(connId) {
             const conn = connections.find(c => c.id === connId);
@@ -940,10 +941,10 @@
 
             // 기존 핸들러 제거 후 새 등록
             if (_waypointMapClickHandler) {
-                kakao.maps.event.removeListener(map._m, 'click', _waypointMapClickHandler);
+                NMaps.removeListener(_waypointClickListener);
             }
             _waypointMapClickHandler = function(mouseEvent) {
-                const latlng = { lat: mouseEvent.latLng.getLat(), lng: mouseEvent.latLng.getLng() };
+                const latlng = { lat: mouseEvent.coord.lat(), lng: mouseEvent.coord.lng() };
                 // 가장 가까운 구간 찾기
                 let minDist = Infinity, insertIndex = 0;
                 for (let i = 0; i < _waypointInsertPath.length - 1; i++) {
@@ -962,12 +963,12 @@
                 cancelWaypointInsertMode();
                 showStatus('📍 경유점이 추가되었습니다');
             };
-            kakao.maps.event.addListener(map._m, 'click', _waypointMapClickHandler);
+            _waypointClickListener = NMaps.addListener(map._m, 'click', _waypointMapClickHandler);
         }
 
         function cancelWaypointInsertMode() {
             if (_waypointMapClickHandler) {
-                kakao.maps.event.removeListener(map._m, 'click', _waypointMapClickHandler);
+                NMaps.removeListener(_waypointClickListener);
                 _waypointMapClickHandler = null;
             }
             _waypointInsertConn = null;

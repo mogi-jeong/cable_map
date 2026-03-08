@@ -720,21 +720,6 @@
             <span class="tb-label">스카이뷰</span>
         </button>
 
-        <!-- 전주선택 -->
-        <button class="tb-btn" id="poleSelectBtn" onclick="startPoleSelect()" data-tip="범위 드래그로 전주 일괄 라벨 조정">
-            <svg width="22" height="22" viewBox="0 0 40 40">
-                <rect x="4" y="4" width="14" height="14" rx="2" fill="none" stroke="#9b59b6" stroke-width="2" stroke-dasharray="3,2"/>
-                <rect x="22" y="4" width="14" height="14" rx="2" fill="none" stroke="#9b59b6" stroke-width="2" stroke-dasharray="3,2"/>
-                <rect x="4" y="22" width="14" height="14" rx="2" fill="none" stroke="#9b59b6" stroke-width="2" stroke-dasharray="3,2"/>
-                <rect x="22" y="22" width="14" height="14" rx="2" fill="none" stroke="#9b59b6" stroke-width="2" stroke-dasharray="3,2"/>
-                <circle cx="11" cy="11" r="3.5" fill="#9b59b6"/>
-                <circle cx="29" cy="11" r="3.5" fill="#9b59b6"/>
-                <circle cx="11" cy="29" r="3.5" fill="#9b59b6"/>
-                <circle cx="29" cy="29" r="3.5" fill="#9b59b6" opacity="0.4"/>
-            </svg>
-            <span class="tb-label" style="color:#9b59b6;">전주선택</span>
-        </button>
-
         <div class="toolbar-divider"></div>
 
         <!-- 초기화 -->
@@ -765,83 +750,10 @@
         </button>
     </div>
     
-    <!-- 전주선택 드래그 오버레이 -->
-    <div id="poleSelectOverlay" style="display:none;position:absolute;border:2px dashed #9b59b6;background:rgba(155,89,182,0.08);pointer-events:none;z-index:99998;"></div>
-
-    <!-- 전주선택 팝업 (선택 영역 근처) -->
-    <div id="poleSelectPanel" style="
-        display:none; position:absolute; z-index:99999;
-        background:white; border:2px solid #9b59b6; border-radius:10px;
-        box-shadow:0 4px 20px rgba(0,0,0,0.2);
-        padding:14px 16px; min-width:280px;
-        font-family:'Malgun Gothic',sans-serif;
-    ">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-            <span style="font-size:13px;font-weight:bold;color:#9b59b6;">🔵 전주선택</span>
-            <button onclick="cancelPoleSelect()" style="background:none;border:none;font-size:16px;cursor:pointer;color:#aaa;line-height:1;">×</button>
-        </div>
-        <div id="poleSelectCount" style="font-size:12px;color:#888;margin-bottom:10px;">드래그로 전주를 선택하세요</div>
-        <div id="poleSelectControls" style="display:none;">
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-                <label style="font-size:12px;color:#555;white-space:nowrap;">라벨 각도</label>
-                <input type="range" id="poleSelectAngle" min="-180" max="180" step="1" value="0"
-                    style="flex:1;accent-color:#9b59b6;"
-                    oninput="onPoleSelectAngleChange(this.value)">
-                <span id="poleSelectAngleVal" style="font-size:13px;font-weight:bold;color:#333;min-width:38px;text-align:right;">0°</span>
-            </div>
-            <div style="display:flex;gap:4px;margin-bottom:8px;">
-                <button onclick="document.getElementById('poleSelectAngle').value=-90;onPoleSelectAngleChange(-90);"
-                    style="flex:1;padding:4px 2px;font-size:11px;border:1px solid #ddd;border-radius:5px;cursor:pointer;background:#f8f8f8;">-90°</button>
-                <button onclick="document.getElementById('poleSelectAngle').value=-45;onPoleSelectAngleChange(-45);"
-                    style="flex:1;padding:4px 2px;font-size:11px;border:1px solid #ddd;border-radius:5px;cursor:pointer;background:#f8f8f8;">-45°</button>
-                <button onclick="document.getElementById('poleSelectAngle').value=0;onPoleSelectAngleChange(0);"
-                    style="flex:1;padding:4px 2px;font-size:11px;border:1px solid #ddd;border-radius:5px;cursor:pointer;background:#f8f8f8;">0°</button>
-                <button onclick="document.getElementById('poleSelectAngle').value=45;onPoleSelectAngleChange(45);"
-                    style="flex:1;padding:4px 2px;font-size:11px;border:1px solid #ddd;border-radius:5px;cursor:pointer;background:#f8f8f8;">45°</button>
-                <button onclick="document.getElementById('poleSelectAngle').value=90;onPoleSelectAngleChange(90);"
-                    style="flex:1;padding:4px 2px;font-size:11px;border:1px solid #ddd;border-radius:5px;cursor:pointer;background:#f8f8f8;">90°</button>
-            </div>
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
-                <label style="font-size:12px;color:#555;white-space:nowrap;">좌우 위치</label>
-                <input type="range" id="poleSelectOffset" min="-500" max="500" step="1" value="20"
-                    style="flex:1;accent-color:#9b59b6;"
-                    oninput="onPoleSelectOffsetChange(this.value)">
-                <span id="poleSelectOffsetVal" style="font-size:13px;font-weight:bold;color:#333;min-width:42px;text-align:right;">20px</span>
-            </div>
-            <div style="display:flex;gap:6px;margin-bottom:10px;">
-                <button onclick="applyPoleSelectAngle()" style="flex:1;padding:8px;background:#9b59b6;color:white;border:none;border-radius:7px;font-size:13px;font-weight:bold;cursor:pointer;">저장</button>
-                <button onclick="resetPoleSelectLabel()" style="padding:8px 12px;background:#f0f0f0;color:#555;border:1px solid #ddd;border-radius:7px;font-size:12px;cursor:pointer;">초기화</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- 함체 위치 확인 팝업 -->
-    <div id="junctionConfirmPopup" style="
-        display:none; position:absolute; z-index:99999;
-        background:white; border:2px solid #1a6fd4; border-radius:10px;
-        box-shadow:0 4px 20px rgba(0,0,0,0.2);
-        padding:14px 16px; min-width:200px;
-        font-family:'Malgun Gothic',sans-serif;
-    ">
-        <div style="font-size:13px;color:#333;margin-bottom:12px;font-weight:bold;">여기에 설치하시겠습니까?</div>
-        <div style="display:flex;gap:8px;">
-            <button id="junctionConfirmYes" style="flex:1;padding:8px;background:#1a6fd4;color:white;border:none;border-radius:7px;font-size:13px;font-weight:bold;cursor:pointer;">예</button>
-            <button onclick="document.getElementById('junctionConfirmPopup').style.display='none';" style="flex:1;padding:8px;background:#f0f0f0;color:#555;border:1px solid #ddd;border-radius:7px;font-size:13px;cursor:pointer;">아니오</button>
-        </div>
-    </div>
-
     <!-- 메뉴 선택 모달 -->
     <div class="modal menu-modal" id="menuModal">
         <div class="modal-content">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid #eee;">
-                <h2 id="menuModalTitle" style="margin:0;padding:0;border:none;">선택하세요</h2>
-                <div id="junctionTypeToggle" style="display:none;gap:5px;display:none;">
-                    <button id="junctionTypeBtnExisting" onclick="setJunctionType('existing')"
-                        style="padding:4px 10px;font-size:11px;font-weight:bold;border-radius:5px;cursor:pointer;border:2px solid #1a6fd4;background:#1a6fd4;color:white;">기설</button>
-                    <button id="junctionTypeBtnNew" onclick="setJunctionType('new')"
-                        style="padding:4px 10px;font-size:11px;font-weight:bold;border-radius:5px;cursor:pointer;border:2px solid #e53935;background:white;color:#e53935;">신설</button>
-                </div>
-            </div>
+            <h2>선택하세요</h2>
             <div id="menuButtons"></div>
             <button class="btn-close" onclick="closeMenuModal()">닫기</button>
         </div>
@@ -1018,10 +930,10 @@
 
     <div class="status-message" id="statusMessage"></div>
     
-    <!-- 카카오맵 SDK (autoload=false → kakao.maps.load 콜백으로 안전하게 초기화) -->
-    <script type="text/javascript" src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=4f478e9f00aaf4d8b3432db26f3d1aa2&autoload=false"></script>
+    <!-- 네이버맵 SDK -->
+    <script type="text/javascript" src="https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=yxe95cu6k2"></script>
 
-    <!-- 카카오맵 shim + 앱 모듈 -->
+    <!-- 네이버맵 shim + 앱 모듈 -->
     <script src="cable_map_shim.js"></script>
     <script src="cable_map_data.js"></script>
     <script src="cable_map_map.js"></script>
@@ -1029,11 +941,9 @@
     <script src="cable_map_ofd.js"></script>
     <script src="cable_map_wiremap.js"></script>
 
-    <!-- 카카오맵 준비 완료 후 앱 시작 -->
+    <!-- 앱 시작 (네이버맵은 동기 로드) -->
     <script>
-        kakao.maps.load(function() {
-            initMap();
-        });
+        initMap();
     </script>
     </body>
 </html>

@@ -18,8 +18,8 @@
             })();
             try {
                 // 카카오맵 로드 확인
-                if (typeof kakao === 'undefined' || !kakao.maps) {
-                    console.error('카카오맵이 로드되지 않았습니다.');
+                if (typeof naver === "undefined" || !naver.maps) {
+                    console.error('네이버맵이 로드되지 않았습니다.');
                     return;
                 }
                 
@@ -35,12 +35,12 @@
 
                 // 지도 이동/줌 시 위치 저장 + 팝업 닫기
                 map.on('zoomend', function() { updatePoleLabels(); });
-                kakao.maps.event.addListener(map._m,'zoom_changed',function(){ updatePoleLabels(); });
+                NMaps.addListener(map._m,'zoom_changed',function(){ updatePoleLabels(); });
                 map.on('moveend', function() {
                     if (!map || !map._m) return;
                     const c = map._m.getCenter();
-                    const z = 18 - map._m.getLevel();
-                    localStorage.setItem('mapView', JSON.stringify({lat:c.getLat(), lng:c.getLng(), zoom:Math.max(1,z)}));
+                    const z = map._m.getZoom();
+                    localStorage.setItem('mapView', JSON.stringify({lat:c.lat(), lng:c.lng(), zoom:z}));
                     map.closePopup();
                     updatePoleLabels();
                 });
@@ -129,9 +129,9 @@
                 });
 
                 // 지도 우클릭 → 빠른 추가 컨텍스트 메뉴
-                kakao.maps.event.addListener(map._m, 'rightclick', function(e) {
-                    const lat = e.latLng.getLat();
-                    const lng = e.latLng.getLng();
+                NMaps.addListener(map._m, 'rightclick', function(e) {
+                    const lat = e.coord.lat();
+                    const lng = e.coord.lng();
 
                     // 기존 컨텍스트 메뉴 제거
                     const existing = document.getElementById('mapContextMenu');
@@ -470,9 +470,9 @@
         }
 
         function updatePoleLabels() {
-            var level = (map && map._m) ? map._m.getLevel() : 99;
+            var level = (map && map._m) ? map._m.getZoom() : 0;
             document.querySelectorAll('.pole-label').forEach(function(el) {
-                if (level <= 3) {
+                if (level >= 16) {
                     el.classList.add('pole-label-visible');
                     var poleId = el.getAttribute('data-pole-id');
                     if (poleId) {
@@ -504,8 +504,8 @@
         function showJunctionRadius(poleNode) {
             _junctionPole = poleNode;
             if (_junctionCircle) _junctionCircle.setMap(null);
-            _junctionCircle = new kakao.maps.Circle({
-                center: new kakao.maps.LatLng(poleNode.lat, poleNode.lng),
+            _junctionCircle = NMaps.Circle({
+                center: NMaps.LatLng(poleNode.lat, poleNode.lng),
                 radius: 20,
                 strokeWeight: 2,
                 strokeColor: '#1a6fd4',
@@ -875,8 +875,8 @@
         let _isSkyView = false;
         function toggleSkyView() {
             _isSkyView = !_isSkyView;
-            map._m.setMapTypeId(
-                _isSkyView ? kakao.maps.MapTypeId.HYBRID : kakao.maps.MapTypeId.ROADMAP
+            NMaps.setMapTypeId(map._m,
+                _isSkyView ? NMaps.MapTypeId.HYBRID : NMaps.MapTypeId.ROADMAP
             );
             const btn = document.getElementById('skyViewBtn');
             if (btn) {
@@ -971,7 +971,7 @@
 
             var mapEl = map.getContainer();
             mapEl.style.cursor = 'crosshair';
-            map._m.setDraggable(false); // 지도 드래그 비활성화
+            NMaps.setDraggable(map._m, false); // 지도 드래그 비활성화
 
             _poleSelectKeyHandler = function(e) {
                 if (e.key === 'Escape') cancelPoleSelect();
@@ -1113,7 +1113,7 @@
             if (btn) btn.classList.remove('active');
             var mapEl = map.getContainer();
             mapEl.style.cursor = '';
-            map._m.setDraggable(true); // 지도 드래그 복원
+            NMaps.setDraggable(map._m, true); // 지도 드래그 복원
             if (_poleSelectMouseDown) mapEl.removeEventListener('mousedown', _poleSelectMouseDown);
             if (_poleSelectMouseMove) mapEl.removeEventListener('mousemove', _poleSelectMouseMove);
             if (_poleSelectMouseUp)   mapEl.removeEventListener('mouseup',   _poleSelectMouseUp);
