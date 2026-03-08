@@ -1,5 +1,32 @@
         function initMap() {
-            // 전주 라벨 스타일 주입
+            // ── Canvas 전주 레이어 변수 ──
+            var _poleCanvas = null;
+            var _poleCtx = null;
+            var _poleCanvasReady = false;
+
+            function initPoleCanvas() {
+                var mapEl = document.getElementById('map');
+                _poleCanvas = document.createElement('canvas');
+                _poleCanvas.id = 'poleCanvas';
+                _poleCanvas.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:200;';
+                mapEl.appendChild(_poleCanvas);
+                _poleCtx = _poleCanvas.getContext('2d');
+                _poleCanvasReady = true;
+                resizePoleCanvas();
+            }
+            function resizePoleCanvas() {
+                if (!_poleCanvas) return;
+                var mapEl = document.getElementById('map');
+                _poleCanvas.width  = mapEl.offsetWidth;
+                _poleCanvas.height = mapEl.offsetHeight;
+            }
+            initPoleCanvas();
+            window.addEventListener('resize', resizePoleCanvas);
+            window._poleCanvas = _poleCanvas;
+            window._poleCtx    = _poleCtx;
+            window._poleCanvasReady = true;
+
+            // 전주 라벨 스타일 주입 (하위호환용 CSS — Canvas에서 직접 그리지만 유지)
             (function() {
                 var s = document.createElement('style');
                 s.textContent = [
@@ -17,7 +44,7 @@
                 document.head.appendChild(s);
             })();
             try {
-                // 카카오맵 로드 확인
+                // 네이버맵 로드 확인
                 if (typeof naver === "undefined" || !naver.maps) {
                     console.error('네이버맵이 로드되지 않았습니다.');
                     return;
@@ -34,20 +61,21 @@
                 loadData();
 
                 // 지도 이동/줌 시 위치 저장 + 팝업 닫기
-                map.on('zoomend', function() { updatePoleLabels(); });
-                NMaps.addListener(map._m,'zoom_changed',function(){ updatePoleLabels(); });
+                map.on('zoomend', function() { drawPoleCanvas(); });
+                NMaps.addListener(map._m,'zoom_changed',function(){ drawPoleCanvas(); });
                 map.on('moveend', function() {
                     if (!map || !map._m) return;
                     const c = map._m.getCenter();
                     const z = map._m.getZoom();
                     localStorage.setItem('mapView', JSON.stringify({lat:c.lat(), lng:c.lng(), zoom:z}));
                     map.closePopup();
-                    updatePoleLabels();
+                    drawPoleCanvas();
                 });
                 
                 // 기존 노드와 연결 표시
                 renderAllNodes();
                 renderAllConnections();
+                initPoleCanvasEvents();
                 
                 // ESC 키 이벤트 (케이블 연결 취소)
                 document.addEventListener('keydown', function(e) {
@@ -63,6 +91,7 @@
                 
                 // 지도 클릭 이벤트
                 map.on('click', function(e) {
+                    if (typeof hideAllWaypointMarkers === 'function') hideAllWaypointMarkers();
                     if (addingMode && addingType === 'junction') {
                         // 원이 표시 중이면 원 안/밖 판단
                         if (_junctionCircle && _junctionPole) {
@@ -138,8 +167,7 @@
                     if (existing) existing.remove();
 
                     // 지도 컨테이너 기준 픽셀 좌표
-                    const proj = map._m.getProjection();
-                    const pt = proj.containerPointFromCoords(e.latLng);
+                    const pt = map.latLngToLayerPoint({ lat, lng });
 
                     const menu = document.createElement('div');
                     menu.id = 'mapContextMenu';
@@ -417,6 +445,14 @@
 
         // 노드 렌더링
         function renderNode(node) {
+            // 전주는 Canvas 레이어로 처리 — DOM 마커 생성 안 함
+            if (isPoleType(node.type)) {
+                // nodes 배열에 이미 있으므로 데이터 등록만
+                // 실제 그리기는 drawPoleCanvas()에서 일괄 처리
+                drawPoleCanvas();
+                return;
+            }
+
             const markerHTML = getMarkerHTML(node.type, node.name, node.memo || '', node.id);
 
             // junction이 전주 위에 겹쳐있으면 오른쪽 아래로 픽셀 오프셋
@@ -429,9 +465,8 @@
                     return dlat < 0.0002 && dlng < 0.0002;
                 });
                 if (nearPole) {
-                    // iconAnchor를 왼쪽으로 당기면 아이콘이 오른쪽으로 이동
-                    anchorX = -4; // 16px 오른쪽
-                    anchorY = 28; // 10px 아래
+                    anchorX = -4;
+                    anchorY = 28;
                 }
             }
             
@@ -442,14 +477,12 @@
                 iconAnchor: [anchorX, anchorY]
             });
             
-            const isPole = isPoleType(node.type);
             const marker = L.marker([node.lat, node.lng], {
                 icon: icon,
-                zIndexOffset: isPole ? 5000 : 0
+                zIndexOffset: 0
             }).addTo(map);
             
             marker.on('click', function() {
-                // 폴리라인 클릭 무시 플래그 (카카오맵 이벤트 시스템 분리 대응)
                 window._nodeJustClicked = true;
                 clearTimeout(window._nodeClickTimer);
                 window._nodeClickTimer = setTimeout(function() {
@@ -466,31 +499,137 @@
             nodes.forEach(node => {
                 renderNode(node);
             });
-            updatePoleLabels();
+            drawPoleCanvas();
         }
 
-        function updatePoleLabels() {
-            var level = (map && map._m) ? map._m.getZoom() : 0;
-            document.querySelectorAll('.pole-label').forEach(function(el) {
-                if (level >= 16) {
-                    el.classList.add('pole-label-visible');
-                    var poleId = el.getAttribute('data-pole-id');
-                    if (poleId) {
-                        var node = nodes.find(function(n) { return n.id === poleId; });
-                        var angle  = (node && node.labelAngle  != null) ? node.labelAngle  : 0;
-                        var offset = (node && node.labelOffset != null) ? node.labelOffset : 20;
-                        el.style.left = '7px';
-                        el.style.right = 'auto';
-                        el.style.top = '0px';
-                        el.style.transformOrigin = '0 50%';
-                        el.style.transform = 'rotate(' + angle + 'deg) translateX(' + offset + 'px)';
-                    }
-                } else {
-                    el.classList.remove('pole-label-visible');
-                    el.style.transform = '';
+        // ── Canvas 전주 렌더러 ──────────────────────────────────────
+        function drawPoleCanvas() {
+            if (!window._poleCanvasReady || !map || !map._m) return;
+            // canvas 크기 맞추기
+            var mapEl = document.getElementById('map');
+            var cv = window._poleCanvas;
+            if (cv.width !== mapEl.offsetWidth)  cv.width  = mapEl.offsetWidth;
+            if (cv.height !== mapEl.offsetHeight) cv.height = mapEl.offsetHeight;
+            var ctx = window._poleCtx;
+            var w = cv.width, h = cv.height;
+            ctx.clearRect(0, 0, w, h);
+
+            var zoom = map._m.getZoom();
+            if (zoom < 12) return; // 너무 작은 줌은 전주 전체 숨김
+
+            var showLabel = zoom >= 16;
+
+            ctx.save();
+            nodes.forEach(function(node) {
+                if (!isPoleType(node.type)) return;
+                var pt = map.latLngToLayerPoint({ lat: node.lat, lng: node.lng });
+                var x = pt.x, y = pt.y;
+                // 화면 밖 컬링 (여유 50px)
+                if (x < -50 || y < -50 || x > w + 50 || y > h + 50) return;
+
+                // 색상 결정
+                var isSelf = node.memo && node.memo.includes('자가주:true');
+                var color = isSelf ? '#9b59b6'
+                    : node.type === 'pole_new'     ? '#e53935'
+                    : node.type === 'pole_removed'  ? '#333333'
+                    : '#1a6fd4';
+
+                // 선택된 전주 하이라이트
+                var isSelected = _poleSelectedNodes && _poleSelectedNodes.some(function(n){ return n.id === node.id; });
+
+                // 원 그리기
+                ctx.beginPath();
+                ctx.arc(x, y, 6, 0, Math.PI * 2);
+                ctx.fillStyle = color;
+                ctx.fill();
+                ctx.strokeStyle = isSelected ? '#9b59b6' : 'white';
+                ctx.lineWidth   = isSelected ? 3 : 2;
+                ctx.stroke();
+
+                // 라벨 그리기 (zoom >= 16)
+                if (showLabel) {
+                    var poleNum = node.memo ? node.memo.replace('전산화번호: ','').replace(/자가주:true/g,'').trim() : '';
+                    var label   = (poleNum && node.name) ? poleNum + '/' + node.name : (node.name || '');
+                    if (!label) return;
+
+                    var angle  = node.labelAngle  != null ? node.labelAngle  : 0;
+                    var offset = node.labelOffset != null ? node.labelOffset : 20;
+
+                    ctx.save();
+                    ctx.translate(x + 7, y);
+                    ctx.rotate(angle * Math.PI / 180);
+                    ctx.translate(offset, 0);
+
+                    ctx.font = 'bold 11px "Malgun Gothic", sans-serif';
+                    var tw = ctx.measureText(label).width;
+                    var th = 14;
+                    // 배경 박스
+                    ctx.fillStyle = 'rgba(255,255,255,0.92)';
+                    ctx.strokeStyle = '#aaaaaa';
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    ctx.roundRect(0, -th/2 - 2, tw + 10, th + 4, 3);
+                    ctx.fill();
+                    ctx.stroke();
+                    // 텍스트
+                    ctx.fillStyle = isSelected ? '#9b59b6' : '#1a1a1a';
+                    ctx.fillText(label, 5, th/2 - 1);
+                    ctx.restore();
                 }
             });
+            ctx.restore();
         }
+        window.drawPoleCanvas = drawPoleCanvas;
+
+        // Canvas 클릭 감지 초기화 (initMap 이후 호출)
+        function initPoleCanvasEvents() {
+            var mapEl = document.getElementById('map');
+            mapEl.addEventListener('click', function(e) {
+                if (!map || !map._m) return;
+                var rect = mapEl.getBoundingClientRect();
+                var mx = e.clientX - rect.left;
+                var my = e.clientY - rect.top;
+                var zoom = map._m.getZoom();
+                if (zoom < 12) return;
+                var hit = null, bestDist = 12; // 클릭 반경 12px
+                nodes.forEach(function(node) {
+                    if (!isPoleType(node.type)) return;
+                    var pt = map.latLngToLayerPoint({ lat: node.lat, lng: node.lng });
+                    var d = Math.sqrt(Math.pow(pt.x - mx, 2) + Math.pow(pt.y - my, 2));
+                    if (d < bestDist) { bestDist = d; hit = node; }
+                });
+                if (hit) {
+                    window._nodeJustClicked = true;
+                    clearTimeout(window._nodeClickTimer);
+                    window._nodeClickTimer = setTimeout(function(){ window._nodeJustClicked = false; }, 600);
+                    onNodeClick(hit);
+                    e.stopPropagation();
+                }
+            }, true); // capture phase — 지도 클릭보다 먼저
+
+            // 커서 변경 (전주 위에서 pointer)
+            mapEl.addEventListener('mousemove', function(e) {
+                if (!map || !map._m) return;
+                var rect = mapEl.getBoundingClientRect();
+                var mx = e.clientX - rect.left;
+                var my = e.clientY - rect.top;
+                var zoom = map._m.getZoom();
+                if (zoom < 12) { window._poleCanvas.style.cursor = ''; return; }
+                var hit = false;
+                for (var i = 0; i < nodes.length; i++) {
+                    var node = nodes[i];
+                    if (!isPoleType(node.type)) continue;
+                    var pt = map.latLngToLayerPoint({ lat: node.lat, lng: node.lng });
+                    if (Math.sqrt(Math.pow(pt.x - mx, 2) + Math.pow(pt.y - my, 2)) < 12) { hit = true; break; }
+                }
+                window._poleCanvas.style.pointerEvents = hit ? 'auto' : 'none';
+                window._poleCanvas.style.cursor = hit ? 'pointer' : '';
+            });
+        }
+
+        function updatePoleLabels() { drawPoleCanvas(); } // 하위 호환
+        function updatePoleVisibility() { drawPoleCanvas(); } // 하위 호환
+        window.updatePoleVisibility = updatePoleVisibility;
 
         // 노드 클릭
         function isPoleType(t) {
@@ -703,21 +842,20 @@
             node.labelOffset = parseInt(document.getElementById('poleLabelOffset').value) ?? 20;
             if (window._currentPoleType) node.type = window._currentPoleType;
             saveData(); closeMenuModal();
-            if(markers[nodeId]) markers[nodeId].setMap(null); delete markers[nodeId];
-            renderNode(node); updatePoleLabels(); showStatus('저장 완료');
+            drawPoleCanvas(); showStatus('저장 완료');
         }
 
         // 저장 전 라벨 미리보기
         function previewPoleLabel(nodeId, angle, offset) {
             var node = nodes.find(function(n) { return n.id === nodeId; });
-            if (offset == null) offset = (node && node.labelOffset != null) ? node.labelOffset : 20;
-            var el = document.querySelector('.pole-label[data-pole-id="'+nodeId+'"]');
-            if (!el) return;
-            el.style.left = '7px';
-            el.style.right = 'auto';
-            el.style.top = '0px';
-            el.style.transformOrigin = '0 50%';
-            el.style.transform = 'rotate('+angle+'deg) translateX('+offset+'px)';
+            if (!node) return;
+            // 임시로 node에 적용 후 캔버스 다시 그림 (저장은 하지 않음)
+            var orig = { labelAngle: node.labelAngle, labelOffset: node.labelOffset };
+            node.labelAngle  = parseFloat(angle)  || 0;
+            node.labelOffset = parseFloat(offset) != null ? parseFloat(offset) : 20;
+            drawPoleCanvas();
+            node.labelAngle  = orig.labelAngle;
+            node.labelOffset = orig.labelOffset;
         }
 
         function resetPoleLabel(nodeId) {
@@ -732,8 +870,7 @@
             if(!confirm('전주를 삭제할까요?')) return;
             const idx = nodes.findIndex(n=>n.id===nodeId);
             if(idx!==-1) nodes.splice(idx,1);
-            if(markers[nodeId]) markers[nodeId].setMap(null); delete markers[nodeId];
-            saveData(); closeMenuModal(); showStatus('전주 삭제 완료');
+            saveData(); drawPoleCanvas(); closeMenuModal(); showStatus('전주 삭제 완료');
         }
 
         // 메뉴 모달 표시
@@ -743,11 +880,13 @@
 
             // 기설/신설 토글: junction일 때만 표시
             const toggle = document.getElementById('junctionTypeToggle');
+            if (toggle) {
             if (selectedNode && selectedNode.type === 'junction') {
                 toggle.style.display = 'flex';
                 _updateJunctionTypeUI(selectedNode.isNew ? 'new' : 'existing');
             } else {
                 toggle.style.display = 'none';
+            }
             }
 
             function makeBtn(svgPath, label, onclick, danger=false) {
@@ -833,7 +972,8 @@
         // 메뉴 모달 닫기
         function closeMenuModal() {
             document.getElementById('menuModal').classList.remove('active');
-            document.getElementById('junctionTypeToggle').style.display = 'none';
+            const _jtt = document.getElementById('junctionTypeToggle');
+            if (_jtt) _jtt.style.display = 'none';
             const title = document.getElementById('menuModalTitle');
             if (title) title.innerHTML = '선택하세요';
             const mb = document.getElementById('menuButtons');
@@ -843,6 +983,7 @@
         function _updateJunctionTypeUI(type) {
             const btnE = document.getElementById('junctionTypeBtnExisting');
             const btnN = document.getElementById('junctionTypeBtnNew');
+            if (!btnE || !btnN) return;
             if (type === 'new') {
                 btnE.style.background = 'white';   btnE.style.color = '#1a6fd4';
                 btnN.style.background = '#e53935'; btnN.style.color = 'white';
@@ -1038,11 +1179,8 @@
                 panel.style.left = Math.max(4, px) + 'px';
                 panel.style.top  = Math.max(4, py) + 'px';
 
-                // 선택된 전주 하이라이트
-                _poleSelectedNodes.forEach(function(n) {
-                    var el = document.querySelector('.pole-label[data-pole-id="'+n.id+'"]');
-                    if (el) el.style.outline = '2px solid #9b59b6';
-                });
+                // 선택된 전주 하이라이트 (Canvas가 그림)
+                drawPoleCanvas();
             };
 
             mapEl.addEventListener('mousedown', _poleSelectMouseDown);
@@ -1052,28 +1190,22 @@
 
         function onPoleSelectAngleChange(val) {
             document.getElementById('poleSelectAngleVal').textContent = val + '°';
-            var offset = parseInt(document.getElementById('poleSelectOffset').value) ?? 20;
+            var offset = parseInt(document.getElementById('poleSelectOffset').value) || 20;
             _poleSelectedNodes.forEach(function(n) {
-                var el = document.querySelector('.pole-label[data-pole-id="'+n.id+'"]');
-                if (!el) return;
-                el.style.left = '7px';
-                el.style.transformOrigin = '0 50%';
-                el.style.transform = 'rotate('+val+'deg) translateX('+offset+'px)';
-                el.style.outline = '2px solid #9b59b6';
+                n.labelAngle  = parseFloat(val)    || 0;
+                n.labelOffset = parseFloat(offset) || 20;
             });
+            drawPoleCanvas();
         }
 
         function onPoleSelectOffsetChange(val) {
             document.getElementById('poleSelectOffsetVal').textContent = val + 'px';
-            var angle = document.getElementById('poleSelectAngle').value;
+            var angle = parseFloat(document.getElementById('poleSelectAngle').value) || 0;
             _poleSelectedNodes.forEach(function(n) {
-                var el = document.querySelector('.pole-label[data-pole-id="'+n.id+'"]');
-                if (!el) return;
-                el.style.left = '7px';
-                el.style.transformOrigin = '0 50%';
-                el.style.transform = 'rotate('+angle+'deg) translateX('+val+'px)';
-                el.style.outline = '2px solid #9b59b6';
+                n.labelAngle  = angle;
+                n.labelOffset = parseFloat(val) || 20;
             });
+            drawPoleCanvas();
         }
 
         function resetPoleSelectLabel() {
@@ -1081,20 +1213,19 @@
             document.getElementById('poleSelectAngleVal').textContent = '0°';
             document.getElementById('poleSelectOffset').value = 20;
             document.getElementById('poleSelectOffsetVal').textContent = '20px';
-            onPoleSelectAngleChange(0);
-            onPoleSelectOffsetChange(20);
+            _poleSelectedNodes.forEach(function(n){n.labelAngle=0;n.labelOffset=20;});
+            drawPoleCanvas();
         }
 
         function applyPoleSelectAngle() {
             var angle  = parseInt(document.getElementById('poleSelectAngle').value)  || 0;
-            var offset = parseInt(document.getElementById('poleSelectOffset').value) ?? 20;
+            var offset = parseInt(document.getElementById('poleSelectOffset').value) || 20;
             _poleSelectedNodes.forEach(function(n) {
                 n.labelAngle  = angle;
                 n.labelOffset = offset;
-                var el = document.querySelector('.pole-label[data-pole-id="'+n.id+'"]');
-                if (el) el.style.outline = '';
             });
             saveData();
+            drawPoleCanvas();
             showStatus(_poleSelectedNodes.length + '개 전주 라벨 저장 완료');
             cancelPoleSelect();
         }
@@ -1102,11 +1233,8 @@
         function cancelPoleSelect() {
             _poleSelectMode = false;
             _poleSelectDragging = false;
-            _poleSelectedNodes.forEach(function(n) {
-                var el = document.querySelector('.pole-label[data-pole-id="'+n.id+'"]');
-                if (el) el.style.outline = '';
-            });
             _poleSelectedNodes = [];
+            drawPoleCanvas();
             document.getElementById('poleSelectPanel').style.display = 'none';
             document.getElementById('poleSelectOverlay').style.display = 'none';
             var btn = document.getElementById('poleSelectBtn');

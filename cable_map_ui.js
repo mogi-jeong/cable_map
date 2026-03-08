@@ -805,7 +805,7 @@
                 _clickTimer = setTimeout(function() {
                     _clickTimer = null;
                 // 줌 레벨에 따라 동적 THRESHOLD (고배율일수록 더 좁게)
-                const zoomLevel = map._m ? (18 - map._m.getLevel()) : 13;
+                const zoomLevel = map._m ? map._m.getZoom() : 13;
                 const THRESHOLD = 0.0003 * Math.pow(2, 13 - zoomLevel);
                 const clickLat = e.latlng.lat, clickLng = e.latlng.lng;
                 const nearNode = nodes.find(n =>
@@ -833,20 +833,22 @@
                     </button>
                 </div>`;
                 L.popup().setLatLng(e.latlng).setContent(popupContent).openOn(map);
+                // 해당 케이블의 경유점 마커 표시
+                showWaypointMarkers(connection.id);
                 }, 300); // 300ms 후 팝업 열기 (더블클릭 대기)
             });
 
-            polylines.push({ line: polyline, label: label });
+            polylines.push({ line: polyline, label: label, connId: connection.id });
             
-            // 중간 점들에 클릭 가능한 마커 추가
+            // 중간 점들에 클릭 가능한 마커 추가 (기본 숨김 — 케이블 클릭 시 표시)
             connection.waypoints.forEach((wp, index) => {
                 const waypointMarker = L.circleMarker([wp.lat, wp.lng], {
                     radius: 6,
                     fillColor: '#e67e22',
                     color: '#FFFFFF',
                     weight: 2,
-                    fillOpacity: 1,
-                    opacity: 1,
+                    fillOpacity: 0,   // 기본 투명
+                    opacity: 0,
                     zIndexOffset: 1000
                 }).addTo(map);
                 
@@ -866,7 +868,7 @@
                 
                 waypointMarker.bindPopup(popupContent);
                 
-                polylines.push({ marker: waypointMarker });
+                polylines.push({ marker: waypointMarker, connId: connection.id });
             });
         }
         
@@ -999,6 +1001,35 @@
         }
 
         // 모든 연결 렌더링
+        // 경유점 마커 표시/숨김
+        function showWaypointMarkers(connId) {
+            polylines.forEach(function(item) {
+                if (!item.marker) return;
+                if (item.connId === connId) {
+                    // HtmlOverlay의 엘리먼트 직접 조작
+                    if (item.marker._ov && item.marker._ov._el) {
+                        item.marker._ov._el.style.opacity = '1';
+                        item.marker._ov._el.style.pointerEvents = 'all';
+                    }
+                } else {
+                    if (item.marker._ov && item.marker._ov._el) {
+                        item.marker._ov._el.style.opacity = '0';
+                        item.marker._ov._el.style.pointerEvents = 'none';
+                    }
+                }
+            });
+        }
+        function hideAllWaypointMarkers() {
+            polylines.forEach(function(item) {
+                if (!item.marker) return;
+                if (item.marker._ov && item.marker._ov._el) {
+                    item.marker._ov._el.style.opacity = '0';
+                    item.marker._ov._el.style.pointerEvents = 'none';
+                }
+            });
+        }
+        window.hideAllWaypointMarkers = hideAllWaypointMarkers;
+
         function renderAllConnections() {
             // 기존 폴리라인 삭제
             polylines.forEach(item => {
