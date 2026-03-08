@@ -658,6 +658,20 @@
             <span class="tb-label">CCTV</span>
         </button>
 
+        <!-- 전주선택 -->
+        <button class="tb-btn" id="poleSelectBtn" onclick="startPoleSelect()" data-tip="전주 범위 선택 (라벨 일괄 조정)" style="color:#9b59b6;">
+            <svg width="22" height="22" viewBox="0 0 40 40">
+                <rect x="4" y="4" width="32" height="32" rx="4" fill="#f5eeff" stroke="#9b59b6" stroke-width="2"/>
+                <rect x="10" y="10" width="14" height="14" rx="2" fill="none" stroke="#9b59b6" stroke-width="2" stroke-dasharray="3,2"/>
+                <circle cx="10" cy="10" r="2.5" fill="#9b59b6"/>
+                <circle cx="24" cy="10" r="2.5" fill="#9b59b6"/>
+                <circle cx="10" cy="24" r="2.5" fill="#9b59b6"/>
+                <circle cx="24" cy="24" r="2.5" fill="#9b59b6"/>
+                <line x1="28" y1="28" x2="36" y2="36" stroke="#9b59b6" stroke-width="2.5" stroke-linecap="round"/>
+            </svg>
+            <span class="tb-label">전주선택</span>
+        </button>
+
         <div class="toolbar-divider"></div>
 
         <!-- 데이터 -->
@@ -741,25 +755,48 @@
             ❌ 취소
         </button>
     </div>
-        <hr style="margin: 15px 0; border: 0; border-top: 1px dashed #ccc;">
-        <button class="btn" style="width: 100%; margin: 0; background: #e74c3c; color: white; font-size: 13px;" onclick="resetAllData()">
-            🗑️ 전체 데이터 초기화
-        </button>
-        <button class="btn btn-cancel" id="cancelBtn" style="display:none;" onclick="cancelAdding()">
-            ❌ 취소
-        </button>
-    </div>
     
     <!-- 메뉴 선택 모달 -->
     <div class="modal menu-modal" id="menuModal">
         <div class="modal-content">
-            <h2>선택하세요</h2>
+            <h2 id="menuModalTitle">선택하세요</h2>
+            <div id="junctionTypeToggle" style="display:none;gap:6px;margin-bottom:8px;">
+                <button onclick="setJunctionType('existing')" id="junctionTypeBtnExisting" style="flex:1;padding:4px 8px;border-radius:4px;border:1px solid #1a6fd4;background:#1a6fd4;color:white;cursor:pointer;">기설</button>
+                <button onclick="setJunctionType('new')" id="junctionTypeBtnNew" style="flex:1;padding:4px 8px;border-radius:4px;border:1px solid #e53935;background:white;color:#e53935;cursor:pointer;">신설</button>
+            </div>
             <div id="menuButtons"></div>
             <button class="btn-close" onclick="closeMenuModal()">닫기</button>
         </div>
     </div>
+
+    <!-- 전주선택 드래그 오버레이 -->
+    <div id="poleSelectOverlay" style="display:none;position:absolute;border:2px dashed #9b59b6;background:rgba(155,89,182,0.08);pointer-events:none;z-index:9000;"></div>
+    <!-- 전주선택 패널 -->
+    <div id="poleSelectPanel" style="display:none;position:absolute;background:white;border:1px solid #9b59b6;border-radius:8px;padding:12px;z-index:9999;min-width:220px;box-shadow:0 2px 8px rgba(0,0,0,0.2);">
+        <div style="font-weight:bold;margin-bottom:8px;color:#9b59b6;">전주 라벨 일괄 조정</div>
+        <div id="poleSelectCount" style="font-size:12px;margin-bottom:8px;color:#666;">드래그로 전주를 선택하세요</div>
+        <div id="poleSelectControls" style="display:none;">
+        <label style="font-size:12px;">각도: <span id="poleSelectAngleVal" style="display:inline-block;min-width:36px;">0</span>°</label>
+        <input type="range" id="poleSelectAngle" min="-180" max="180" value="0" style="width:100%;" oninput="onPoleSelectAngleChange(this.value)">
+        <div style="display:flex;gap:4px;margin:4px 0;flex-wrap:wrap;">
+            <button onclick="onPoleSelectAngleChange(-90);document.getElementById('poleSelectAngle').value=-90;" style="font-size:11px;padding:2px 6px;border-radius:3px;border:1px solid #ccc;cursor:pointer;">-90°</button>
+            <button onclick="onPoleSelectAngleChange(-45);document.getElementById('poleSelectAngle').value=-45;" style="font-size:11px;padding:2px 6px;border-radius:3px;border:1px solid #ccc;cursor:pointer;">-45°</button>
+            <button onclick="onPoleSelectAngleChange(0);document.getElementById('poleSelectAngle').value=0;" style="font-size:11px;padding:2px 6px;border-radius:3px;border:1px solid #ccc;cursor:pointer;">0°</button>
+            <button onclick="onPoleSelectAngleChange(45);document.getElementById('poleSelectAngle').value=45;" style="font-size:11px;padding:2px 6px;border-radius:3px;border:1px solid #ccc;cursor:pointer;">45°</button>
+            <button onclick="onPoleSelectAngleChange(90);document.getElementById('poleSelectAngle').value=90;" style="font-size:11px;padding:2px 6px;border-radius:3px;border:1px solid #ccc;cursor:pointer;">90°</button>
+        </div>
+        <label style="font-size:12px;">좌우 위치: <span id="poleSelectOffsetVal" style="display:inline-block;min-width:44px;">20</span>px</label>
+        <input type="range" id="poleSelectOffset" min="-500" max="500" value="20" style="width:100%;" oninput="onPoleSelectOffsetChange(this.value)">
+        <div style="display:flex;gap:6px;margin-top:8px;">
+            <button onclick="applyPoleSelectAngle()" style="flex:1;padding:4px;background:#9b59b6;color:white;border:none;border-radius:4px;cursor:pointer;">저장</button>
+            <button onclick="resetPoleSelectLabel()" style="flex:1;padding:4px;background:#eee;border:none;border-radius:4px;cursor:pointer;">초기화</button>
+            <button onclick="cancelPoleSelect()" style="flex:1;padding:4px;background:#eee;border:none;border-radius:4px;cursor:pointer;">닫기</button>
+        </div>
+        </div>
+        <button onclick="cancelPoleSelect()" style="margin-top:6px;width:100%;padding:4px;background:#eee;border:none;border-radius:4px;cursor:pointer;font-size:12px;">취소 (ESC)</button>
+    </div>
+
     
-    <!-- OFD 관리 모달 -->
     <div class="modal modal-a" id="ofdModal">
         <div class="modal-content" style="max-width: 90%; max-height: 90vh;">
             <div class="a-mhd">
@@ -812,7 +849,7 @@
                 <button class="a-btn a-btn-ghost" onclick="closeWireMap()">닫기</button>
             </div>
         </div>
-    </div>    </div>
+    </div>
     
     <!-- RN 추가 모달 -->
     <div class="modal" id="rnModal">
@@ -929,19 +966,28 @@
     </div>
 
     <div class="status-message" id="statusMessage"></div>
+
+    <!-- 함체 위치 확인 팝업 -->
+    <div id="junctionConfirmPopup" style="display:none;position:absolute;z-index:9999;background:white;border:1px solid #ccc;border-radius:8px;padding:12px 16px;box-shadow:0 4px 16px rgba(0,0,0,0.18);min-width:180px;">
+        <div style="font-size:13px;color:#333;margin-bottom:10px;">이 위치에 함체를 추가할까요?</div>
+        <div style="display:flex;gap:8px;">
+            <button id="junctionConfirmYes" style="flex:1;padding:7px 0;background:#3498db;color:white;border:none;border-radius:5px;cursor:pointer;font-size:13px;font-weight:bold;">추가</button>
+            <button id="junctionConfirmNo"  style="flex:1;padding:7px 0;background:#95a5a6;color:white;border:none;border-radius:5px;cursor:pointer;font-size:13px;">취소</button>
+        </div>
+    </div>
     
-    <!-- 카카오맵 SDK (autoload=false → kakao.maps.load 콜백으로 안전하게 초기화) -->
-    <script type="text/javascript" src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=4f478e9f00aaf4d8b3432db26f3d1aa2&autoload=false"></script>
+    <!-- 카카오맵 SDK -->
+    <script type="text/javascript" src="//dapi.kakao.com/v2/maps/sdk.js?appkey=4f478e9f00aaf4d8b3432db26f3d1aa2&autoload=false"></script>
 
     <!-- 카카오맵 shim + 앱 모듈 -->
     <script src="cable_map_shim.js"></script>
     <script src="cable_map_data.js"></script>
     <script src="cable_map_map.js"></script>
-    <script src="cable_map_ui.js"></script>
     <script src="cable_map_ofd.js"></script>
+    <script src="cable_map_ui.js"></script>
     <script src="cable_map_wiremap.js"></script>
 
-    <!-- 카카오맵 준비 완료 후 앱 시작 -->
+    <!-- 앱 시작 -->
     <script>
         kakao.maps.load(function() {
             initMap();

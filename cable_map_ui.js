@@ -299,7 +299,7 @@
         let previewPolyline = null;
         let snapCircleOverlay = null;
         let snapHighlight = null;
-        const SNAP_RADIUS_M = 5;
+        const SNAP_RADIUS_M = 10;
 
         function startConnecting() {
             closeMenuModal();
@@ -313,6 +313,7 @@
             showStatus('지도를 클릭해 경유점을 찍고, 도착 장비를 클릭하세요 (ESC=취소)');
             map.off('click', onMapClickForWaypoint);
             map.on('click', onMapClickForWaypoint);
+            window._mousemoveHandler = onMapMousemoveForSnap;
             kakao.maps.event.addListener(map._m, 'mousemove', onMapMousemoveForSnap);
         }
 
@@ -369,9 +370,13 @@
             showStatus('전주 스냅: '+node.name+' | 경유점 '+pendingWaypoints.length+'개');
         }
 
+        let _lastWaypointClick = 0;
         function onMapClickForWaypoint(e) {
             if (!connectingMode || !connectingFromNode) return;
             if (window._nodeJustClicked) return;
+            const _now = Date.now();
+            if (_now - _lastWaypointClick < 300) return; // 더블클릭 방지
+            _lastWaypointClick = _now;
             let lat=e.latlng.lat, lng=e.latlng.lng;
             const nearPole = findNearestPole(lat,lng);
             if (nearPole) { lat=nearPole.lat; lng=nearPole.lng; }
@@ -408,7 +413,7 @@
             if (previewPolyline) { map.removeLayer(previewPolyline); previewPolyline = null; }
             if (snapCircleOverlay) { snapCircleOverlay.setMap(null); snapCircleOverlay=null; }
             if (snapHighlight) { snapHighlight.setMap(null); snapHighlight=null; }
-            kakao.maps.event.removeListener(map._m, 'mousemove', onMapMousemoveForSnap);
+            if(window._mousemoveHandler){kakao.maps.event.removeListener(map._m,'mousemove',window._mousemoveHandler);window._mousemoveHandler=null;}
             map.off('click', onMapClickForWaypoint);
         }
         // 전체 초기화 (취소 시)
@@ -801,7 +806,7 @@
                 _clickTimer = setTimeout(function() {
                     _clickTimer = null;
                 // 줌 레벨에 따라 동적 THRESHOLD (고배율일수록 더 좁게)
-                const zoomLevel = map._m ? (18 - map._m.getLevel()) : 13;
+                const zoomLevel = map._m ? map.getZoom() : 13;
                 const THRESHOLD = 0.0003 * Math.pow(2, 13 - zoomLevel);
                 const clickLat = e.latlng.lat, clickLng = e.latlng.lng;
                 const nearNode = nodes.find(n =>
@@ -829,20 +834,22 @@
                     </button>
                 </div>`;
                 L.popup().setLatLng(e.latlng).setContent(popupContent).openOn(map);
+                // 해당 케이블의 경유점 마커 표시
+                showWaypointMarkers(connection.id);
                 }, 300); // 300ms 후 팝업 열기 (더블클릭 대기)
             });
 
-            polylines.push({ line: polyline, label: label });
+            polylines.push({ line: polyline, label: label, connId: connection.id });
             
-            // 중간 점들에 클릭 가능한 마커 추가
+            // 중간 점들에 클릭 가능한 마커 추가 (기본 숨김 — 케이블 클릭 시 표시)
             connection.waypoints.forEach((wp, index) => {
                 const waypointMarker = L.circleMarker([wp.lat, wp.lng], {
                     radius: 6,
                     fillColor: '#e67e22',
                     color: '#FFFFFF',
                     weight: 2,
-                    fillOpacity: 1,
-                    opacity: 1,
+                    fillOpacity: 0,   // 기본 투명
+                    opacity: 0,
                     zIndexOffset: 1000
                 }).addTo(map);
                 
@@ -862,7 +869,7 @@
                 
                 waypointMarker.bindPopup(popupContent);
                 
-                polylines.push({ marker: waypointMarker });
+                polylines.push({ marker: waypointMarker, connId: connection.id });
             });
         }
         
@@ -913,6 +920,7 @@
         let _waypointInsertConn = null;
         let _waypointInsertPath = null;
         let _waypointMapClickHandler = null;
+        let _waypointClickListener = null;
 
         function startWaypointInsertModeById(connId) {
             const conn = connections.find(c => c.id === connId);
@@ -936,7 +944,7 @@
 
             // 기존 핸들러 제거 후 새 등록
             if (_waypointMapClickHandler) {
-                kakao.maps.event.removeListener(map._m, 'click', _waypointMapClickHandler);
+                if(_waypointClickListener){kakao.maps.event.removeListener(map._m,'click',_waypointClickListener);_waypointClickListener=null;}
             }
             _waypointMapClickHandler = function(mouseEvent) {
                 const latlng = { lat: mouseEvent.latLng.getLat(), lng: mouseEvent.latLng.getLng() };
@@ -959,11 +967,12 @@
                 showStatus('📍 경유점이 추가되었습니다');
             };
             kakao.maps.event.addListener(map._m, 'click', _waypointMapClickHandler);
+            _waypointClickListener = _waypointMapClickHandler;
         }
 
         function cancelWaypointInsertMode() {
             if (_waypointMapClickHandler) {
-                kakao.maps.event.removeListener(map._m, 'click', _waypointMapClickHandler);
+                if(_waypointClickListener){kakao.maps.event.removeListener(map._m,'click',_waypointClickListener);_waypointClickListener=null;}
                 _waypointMapClickHandler = null;
             }
             _waypointInsertConn = null;
@@ -994,6 +1003,35 @@
         }
 
         // 모든 연결 렌더링
+        // 경유점 마커 표시/숨김
+        function showWaypointMarkers(connId) {
+            polylines.forEach(function(item) {
+                if (!item.marker) return;
+                if (item.connId === connId) {
+                    // HtmlOverlay의 엘리먼트 직접 조작
+                    if (item.marker._ov && item.marker._ov._el) {
+                        item.marker._ov._el.style.opacity = '1';
+                        item.marker._ov._el.style.pointerEvents = 'all';
+                    }
+                } else {
+                    if (item.marker._ov && item.marker._ov._el) {
+                        item.marker._ov._el.style.opacity = '0';
+                        item.marker._ov._el.style.pointerEvents = 'none';
+                    }
+                }
+            });
+        }
+        function hideAllWaypointMarkers() {
+            polylines.forEach(function(item) {
+                if (!item.marker) return;
+                if (item.marker._ov && item.marker._ov._el) {
+                    item.marker._ov._el.style.opacity = '0';
+                    item.marker._ov._el.style.pointerEvents = 'none';
+                }
+            });
+        }
+        window.hideAllWaypointMarkers = hideAllWaypointMarkers;
+
         function renderAllConnections() {
             // 기존 폴리라인 삭제
             polylines.forEach(item => {
@@ -1124,3 +1162,23 @@
         }
         
         // OFD 목록 렌더링
+        // ==================== window 공개 ====================
+        window.showNodeInfoModalForEdit = showNodeInfoModalForEdit;
+        window.saveNodeInfo             = saveNodeInfo;
+        window.deleteNode               = deleteNode;
+        window.deleteNodeFromMenu       = deleteNodeFromMenu;
+        window.closeNodeInfoModal       = closeNodeInfoModal;
+        window.startConnecting          = startConnecting;
+        window.showConnectionModal      = showConnectionModal;
+        window.confirmConnection        = confirmConnection;
+        window.closeConnectionModal     = closeConnectionModal;
+        window.deleteConnection         = deleteConnection;
+        window.deleteWaypoint           = deleteWaypoint;
+        window.startWaypointInsertModeById = startWaypointInsertModeById;
+        window.cancelWaypointInsertMode = cancelWaypointInsertMode;
+        window.startMovingNode          = startMovingNode;
+        window.showOFDModal             = showOFDModal;
+        window.saveAllWithRecalc        = saveAllWithRecalc;
+        window.showWaypointMarkers      = showWaypointMarkers;
+        window.renderAllConnections     = renderAllConnections;
+        window.showStatus               = showStatus;

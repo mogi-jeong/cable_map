@@ -1,11 +1,38 @@
         function initMap() {
-            // 전주 라벨 스타일 주입
+            // ── Canvas 전주 레이어 변수 ──
+            var _poleCanvas = null;
+            var _poleCtx = null;
+            var _poleCanvasReady = false;
+
+            function initPoleCanvas() {
+                var mapEl = document.getElementById('map');
+                _poleCanvas = document.createElement('canvas');
+                _poleCanvas.id = 'poleCanvas';
+                _poleCanvas.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:200;';
+                mapEl.appendChild(_poleCanvas);
+                _poleCtx = _poleCanvas.getContext('2d');
+                _poleCanvasReady = true;
+                resizePoleCanvas();
+            }
+            function resizePoleCanvas() {
+                if (!_poleCanvas) return;
+                var mapEl = document.getElementById('map');
+                _poleCanvas.width  = mapEl.offsetWidth;
+                _poleCanvas.height = mapEl.offsetHeight;
+            }
+            initPoleCanvas();
+            window.addEventListener('resize', resizePoleCanvas);
+            window._poleCanvas = _poleCanvas;
+            window._poleCtx    = _poleCtx;
+            window._poleCanvasReady = true;
+
+            // 전주 라벨 스타일 주입 (하위호환용 CSS — Canvas에서 직접 그리지만 유지)
             (function() {
                 var s = document.createElement('style');
                 s.textContent = [
                     '.pole-marker { position: relative; }',
                     '.pole-label {',
-                    '    position: absolute; left: 16px; top: -6px;',
+                    '    position: absolute; top: -6px;',
                     '    white-space: nowrap; font-size: 12px;',
                     "    font-family: 'Malgun Gothic', sans-serif; font-weight: bold;",
                     '    color: #1a1a1a; background: rgba(255,255,255,0.92);',
@@ -18,7 +45,7 @@
             })();
             try {
                 // 카카오맵 로드 확인
-                if (typeof kakao === 'undefined' || !kakao.maps) {
+                if (typeof kakao === "undefined" || !kakao.maps) {
                     console.error('카카오맵이 로드되지 않았습니다.');
                     return;
                 }
@@ -34,19 +61,22 @@
                 loadData();
 
                 // 지도 이동/줌 시 위치 저장 + 팝업 닫기
-                map.on('zoomend', function() { updatePoleLabels(); });
-                kakao.maps.event.addListener(map._m,'zoom_changed',function(){ updatePoleLabels(); });
+                map.on('zoomend', function() { drawPoleCanvas(); });
+                // zoom_changed는 shim moveend에서 처리
                 map.on('moveend', function() {
                     if (!map || !map._m) return;
                     const c = map._m.getCenter();
-                    const z = 18 - map._m.getLevel();
-                    localStorage.setItem('mapView', JSON.stringify({lat:c.getLat(), lng:c.getLng(), zoom:Math.max(1,z)}));
+                    if (!c) return;
+                    const z = map.getZoom();
+                    localStorage.setItem('mapView', JSON.stringify({lat:c.getLat(), lng:c.getLng(), zoom:z}));
                     map.closePopup();
+                    drawPoleCanvas();
                 });
                 
                 // 기존 노드와 연결 표시
                 renderAllNodes();
                 renderAllConnections();
+                initPoleCanvasEvents();
                 
                 // ESC 키 이벤트 (케이블 연결 취소)
                 document.addEventListener('keydown', function(e) {
@@ -62,6 +92,64 @@
                 
                 // 지도 클릭 이벤트
                 map.on('click', function(e) {
+                    if (typeof hideAllWaypointMarkers === 'function') hideAllWaypointMarkers();
+                    if (addingMode && addingType === 'junction') {
+                        // 원이 표시 중이면 원 안/밖 판단
+                        if (_junctionCircle && _junctionPole) {
+                            var dist = latlngDist(e.latlng.lat, e.latlng.lng, _junctionPole.lat, _junctionPole.lng);
+                            if (dist <= 20) {
+                                // 원 안 → 함체 생성
+                                var poleName = _junctionPole.name || '';
+                                clearJunctionRadius();
+                                cancelAdding();
+                                document.getElementById('junctionConfirmPopup').style.display = 'none';
+                                var junctionNode = {
+                                    id: Date.now().toString(),
+                                    type: 'junction',
+                                    lat: e.latlng.lat, lng: e.latlng.lng,
+                                    name: poleName, fiberType: '', memo: '',
+                                    ofds: [], ports: [], rns: [],
+                                    inOrder: [], connDirections: {}
+                                };
+                                nodes.push(junctionNode);
+                                saveData();
+                                renderNode(junctionNode);
+                                selectedNode = junctionNode;
+                                showNodeInfoModalForEdit();
+                            } else {
+                                // 원 밖 → 다른 전주 선택 유도
+                                showStatus('원 안에서 클릭하거나 다른 전주를 선택하세요  (ESC: 취소)');
+                            }
+                        } else {
+                            // 원 없이 빈 곳 클릭 → 확인 팝업
+                            var popup = document.getElementById('junctionConfirmPopup');
+                            var container = map.getContainer();
+                            var rect = container.getBoundingClientRect();
+                            var pt = map.latLngToLayerPoint(e.latlng);
+                            var px = pt.x + 10, py = pt.y + 10;
+                            if (px + 220 > rect.width)  px = pt.x - 220;
+                            if (py + 100 > rect.height) py = pt.y - 100;
+                            popup.style.left = Math.max(4, px) + 'px';
+                            popup.style.top  = Math.max(4, py) + 'px';
+                            popup.style.display = 'block';
+                            document.getElementById('junctionConfirmYes').onclick = function() {
+                                popup.style.display = 'none';
+                                cancelAdding();
+                                var node = {
+                                    id: Date.now().toString(),
+                                    type: 'junction',
+                                    lat: e.latlng.lat, lng: e.latlng.lng,
+                                    name: '', fiberType: '', memo: '',
+                                    ofds: [], ports: [], rns: [],
+                                    inOrder: [], connDirections: {}
+                                };
+                                nodes.push(node);
+                                saveData();
+                                renderNode(node);
+                            };
+                        }
+                        return;
+                    }
                     if (addingMode) {
                         addNode(e.latlng.lat, e.latlng.lng, addingType);
                         cancelAdding();
@@ -80,8 +168,7 @@
                     if (existing) existing.remove();
 
                     // 지도 컨테이너 기준 픽셀 좌표
-                    const proj = map._m.getProjection();
-                    const pt = proj.containerPointFromCoords(e.latLng);
+                    const pt = map.latLngToLayerPoint({ lat, lng });
 
                     const menu = document.createElement('div');
                     menu.id = 'mapContextMenu';
@@ -135,7 +222,11 @@
                         btn.onmouseout  = () => btn.style.background = '';
                         btn.onclick = () => {
                             menu.remove();
-                            addNode(lat, lng, item.type);
+                            if (item.type === 'junction') {
+                                startAddingNode('junction');
+                            } else {
+                                addNode(lat, lng, item.type);
+                            }
                         };
                         menu.appendChild(btn);
                     });
@@ -167,7 +258,11 @@
             addingMode = true;
             addingType = type;
             document.getElementById('cancelBtn').style.display = 'flex';
-            showStatus('지도에서 위치를 클릭하세요');
+            if (type === 'junction') {
+                showStatus('전주를 선택해 주세요');
+            } else {
+                showStatus('지도에서 위치를 클릭하세요');
+            }
         }
         
         // 노드 추가 취소
@@ -175,6 +270,8 @@
             addingMode = false;
             addingType = '';
             document.getElementById('cancelBtn').style.display = 'none';
+            document.getElementById('junctionConfirmPopup').style.display = 'none';
+            clearJunctionRadius();
             hideStatus();
         }
         
@@ -210,11 +307,15 @@
             
             // 바로 정보 입력 모달 띄우기
             selectedNode = node;
-            showNodeInfoModalForEdit();
+            if (isPoleType(node.type)) {
+                showPoleModal(node);
+            } else {
+                showNodeInfoModalForEdit();
+            }
         }
         
         // 마커 HTML 생성
-        function getMarkerHTML(type, name, memo) {
+        function getMarkerHTML(type, name, memo, nodeId) {
             // ── 국사: 서버랙 표준형 ──
             if (type === 'datacenter') {
                 return `
@@ -236,13 +337,17 @@
             }
             // ── 함체: 나비넥타이 개선판 ──
             if (type === 'junction') {
+                const node = nodes.find(n => n.id === nodeId);
+                const isNew = node && node.isNew;
+                const fillColor   = isNew ? '#ffe8e8' : '#e8f0fe';
+                const strokeColor = isNew ? '#e53935' : '#1a6fd4';
                 return `
                     <div class="custom-marker">
-                        <svg width="40" height="40" viewBox="0 0 40 40" style="filter:drop-shadow(0 2px 8px rgba(0,0,0,0.3));">
-                            <circle cx="20" cy="20" r="18" fill="#e8f0fe" stroke="#1a6fd4" stroke-width="2.5"/>
-                            <polygon points="20,20 7,11 7,29" fill="#1a6fd4"/>
-                            <polygon points="20,20 33,11 33,29" fill="#1a6fd4"/>
-                            <circle cx="20" cy="20" r="2.5" fill="white" stroke="#1a6fd4" stroke-width="1.5"/>
+                        <svg width="32" height="32" viewBox="0 0 40 40" style="filter:drop-shadow(0 2px 8px rgba(0,0,0,0.3));">
+                            <circle cx="20" cy="20" r="18" fill="${fillColor}" stroke="${strokeColor}" stroke-width="2.5"/>
+                            <polygon points="20,20 7,11 7,29" fill="${strokeColor}"/>
+                            <polygon points="20,20 33,11 33,29" fill="${strokeColor}"/>
+                            <circle cx="20" cy="20" r="2.5" fill="white" stroke="${strokeColor}" stroke-width="1.5"/>
                         </svg>
                         ${name ? `<div class="marker-label">${name}</div>` : ''}
                     </div>
@@ -314,16 +419,28 @@
                     </div>
                 `;
             }
-            // ── 전주: 파란 원형 점 ──
-            if (type === 'pole') {
-                const poleNum = memo ? memo.replace('전산화번호: ', '') : '';
+            // ── 전주: 원형 점 (기설=파랑, 신설=빨강, 철거=검정, 자가주=보라) ──
+            if (type === 'pole' || type === 'pole_existing' || type === 'pole_new' || type === 'pole_removed') {
+                const poleNum = memo ? memo.replace('전산화번호: ', '').replace('자가주:true', '').trim() : '';
                 const poleLabel = (poleNum && name) ? poleNum + '/' + name : (name || '');
+                // 자가주 여부 확인 (memo에 '자가주' 포함 또는 별도 필드)
+                const isSelf = memo && memo.includes('자가주:true');
+                let fillColor;
+                if (isSelf) {
+                    fillColor = '#9b59b6'; // 보라
+                } else if (type === 'pole_new') {
+                    fillColor = '#e53935'; // 빨강
+                } else if (type === 'pole_removed') {
+                    fillColor = '#333333'; // 검정
+                } else {
+                    fillColor = '#1a6fd4'; // 파랑 (기설/기본)
+                }
                 return `
                     <div class="custom-marker pole-marker">
                         <svg width="14" height="14" viewBox="0 0 14 14" style="overflow:visible;display:block;">
-                            <circle cx="7" cy="7" r="6" fill="#1a6fd4" stroke="white" stroke-width="2"/>
+                            <circle cx="7" cy="7" r="6" fill="${fillColor}" stroke="white" stroke-width="2"/>
                         </svg>
-                        ${poleLabel ? `<div class="pole-label">${poleLabel}</div>` : ''}
+                        ${poleLabel ? `<div class="pole-label" data-pole-id="${nodeId||''}">${poleLabel}</div>` : ''}
                     </div>
                 `;
             }
@@ -333,19 +450,44 @@
 
         // 노드 렌더링
         function renderNode(node) {
-            const markerHTML = getMarkerHTML(node.type, node.name, node.memo || '');
+            // 전주는 Canvas 레이어로 처리 — DOM 마커 생성 안 함
+            if (isPoleType(node.type)) {
+                // nodes 배열에 이미 있으므로 데이터 등록만
+                // 실제 그리기는 drawPoleCanvas()에서 일괄 처리
+                drawPoleCanvas();
+                return;
+            }
+
+            const markerHTML = getMarkerHTML(node.type, node.name, node.memo || '', node.id);
+
+            // junction이 전주 위에 겹쳐있으면 오른쪽 아래로 픽셀 오프셋
+            var anchorX = 12, anchorY = 18;
+            if (node.type === 'junction') {
+                var nearPole = nodes.find(function(n) {
+                    if (!isPoleType(n.type)) return false;
+                    var dlat = Math.abs(n.lat - node.lat);
+                    var dlng = Math.abs(n.lng - node.lng);
+                    return dlat < 0.0002 && dlng < 0.0002;
+                });
+                if (nearPole) {
+                    anchorX = -4;
+                    anchorY = 28;
+                }
+            }
             
             const icon = L.divIcon({
                 html: markerHTML,
                 className: 'custom-div-icon',
                 iconSize: [24, 36],
-                iconAnchor: [12, 18]
+                iconAnchor: [anchorX, anchorY]
             });
             
-            const marker = L.marker([node.lat, node.lng], { icon: icon }).addTo(map);
+            const marker = L.marker([node.lat, node.lng], {
+                icon: icon,
+                zIndexOffset: 0
+            }).addTo(map);
             
             marker.on('click', function() {
-                // 폴리라인 클릭 무시 플래그 (카카오맵 이벤트 시스템 분리 대응)
                 window._nodeJustClicked = true;
                 clearTimeout(window._nodeClickTimer);
                 window._nodeClickTimer = setTimeout(function() {
@@ -362,24 +504,192 @@
             nodes.forEach(node => {
                 renderNode(node);
             });
-            updatePoleLabels();
+            drawPoleCanvas();
         }
 
-        function updatePoleLabels() {
-            // 카카오맵: getLevel() - 숫자 작을수록 확대 (1~14, 3이하면 상세)
-            var level = (map && map._m) ? map._m.getLevel() : 99;
-            document.querySelectorAll('.pole-label').forEach(function(el) {
-                if (level <= 3) el.classList.add('pole-label-visible');
-                else el.classList.remove('pole-label-visible');
+        // ── Canvas 전주 렌더러 ──────────────────────────────────────
+        function drawPoleCanvas() {
+            if (!window._poleCanvasReady || !map || !map._m) return;
+            // canvas 크기 맞추기
+            var mapEl = document.getElementById('map');
+            var cv = window._poleCanvas;
+            if (cv.width !== mapEl.offsetWidth)  cv.width  = mapEl.offsetWidth;
+            if (cv.height !== mapEl.offsetHeight) cv.height = mapEl.offsetHeight;
+            var ctx = window._poleCtx;
+            var w = cv.width, h = cv.height;
+            ctx.clearRect(0, 0, w, h);
+
+            var zoom = map.getZoom();
+            if (zoom < 12) return; // 너무 작은 줌은 전주 전체 숨김
+
+            var showLabel = zoom >= 16;
+
+            ctx.save();
+            nodes.forEach(function(node) {
+                if (!isPoleType(node.type)) return;
+                var pt = map.latLngToLayerPoint({ lat: node.lat, lng: node.lng });
+                var x = pt.x, y = pt.y;
+                // 화면 밖 컬링 (여유 50px)
+                if (x < -50 || y < -50 || x > w + 50 || y > h + 50) return;
+
+                // 색상 결정
+                var isSelf = node.memo && node.memo.includes('자가주:true');
+                var color = isSelf ? '#9b59b6'
+                    : node.type === 'pole_new'     ? '#e53935'
+                    : node.type === 'pole_removed'  ? '#333333'
+                    : '#1a6fd4';
+
+                // 선택된 전주 하이라이트
+                var isSelected = _poleSelectedNodes && _poleSelectedNodes.some(function(n){ return n.id === node.id; });
+
+                // 원 그리기
+                ctx.beginPath();
+                ctx.arc(x, y, 6, 0, Math.PI * 2);
+                ctx.fillStyle = color;
+                ctx.fill();
+                ctx.strokeStyle = isSelected ? '#9b59b6' : 'white';
+                ctx.lineWidth   = isSelected ? 3 : 2;
+                ctx.stroke();
+
+                // 라벨 그리기 (zoom >= 16)
+                if (showLabel) {
+                    var poleNum = node.memo ? node.memo.replace('전산화번호: ','').replace(/자가주:true/g,'').trim() : '';
+                    var label   = (poleNum && node.name) ? poleNum + '/' + node.name : (node.name || '');
+                    if (!label) return;
+
+                    var angle  = node.labelAngle  != null ? node.labelAngle  : 0;
+                    var offset = node.labelOffset != null ? node.labelOffset : 20;
+
+                    ctx.save();
+                    ctx.translate(x + 7, y);
+                    ctx.rotate(angle * Math.PI / 180);
+                    ctx.translate(offset, 0);
+
+                    ctx.font = 'bold 11px "Malgun Gothic", sans-serif';
+                    var tw = ctx.measureText(label).width;
+                    var th = 14;
+                    // 배경 박스
+                    ctx.fillStyle = 'rgba(255,255,255,0.92)';
+                    ctx.strokeStyle = '#aaaaaa';
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    ctx.roundRect(0, -th/2 - 2, tw + 10, th + 4, 3);
+                    ctx.fill();
+                    ctx.stroke();
+                    // 텍스트
+                    ctx.fillStyle = isSelected ? '#9b59b6' : '#1a1a1a';
+                    ctx.fillText(label, 5, th/2 - 1);
+                    ctx.restore();
+                }
+            });
+            ctx.restore();
+        }
+        window.drawPoleCanvas = drawPoleCanvas;
+
+        // Canvas 클릭 감지 초기화 (initMap 이후 호출)
+        function initPoleCanvasEvents() {
+            var mapEl = document.getElementById('map');
+            mapEl.addEventListener('click', function(e) {
+                if (!map || !map._m) return;
+                var rect = mapEl.getBoundingClientRect();
+                var mx = e.clientX - rect.left;
+                var my = e.clientY - rect.top;
+                var zoom = map.getZoom();
+                if (zoom < 12) return;
+                var hit = null, bestDist = 12; // 클릭 반경 12px
+                nodes.forEach(function(node) {
+                    if (!isPoleType(node.type)) return;
+                    var pt = map.latLngToLayerPoint({ lat: node.lat, lng: node.lng });
+                    var d = Math.sqrt(Math.pow(pt.x - mx, 2) + Math.pow(pt.y - my, 2));
+                    if (d < bestDist) { bestDist = d; hit = node; }
+                });
+                if (hit) {
+                    window._nodeJustClicked = true;
+                    clearTimeout(window._nodeClickTimer);
+                    window._nodeClickTimer = setTimeout(function(){ window._nodeJustClicked = false; }, 600);
+                    onNodeClick(hit);
+                    e.stopPropagation();
+                }
+            }, true); // capture phase — 지도 클릭보다 먼저
+
+            // 커서 변경 (전주 위에서 pointer)
+            mapEl.addEventListener('mousemove', function(e) {
+                if (!map || !map._m) return;
+                var rect = mapEl.getBoundingClientRect();
+                var mx = e.clientX - rect.left;
+                var my = e.clientY - rect.top;
+                var zoom = map.getZoom();
+                if (zoom < 12) { window._poleCanvas.style.cursor = ''; return; }
+                var hit = false;
+                for (var i = 0; i < nodes.length; i++) {
+                    var node = nodes[i];
+                    if (!isPoleType(node.type)) continue;
+                    var pt = map.latLngToLayerPoint({ lat: node.lat, lng: node.lng });
+                    if (Math.sqrt(Math.pow(pt.x - mx, 2) + Math.pow(pt.y - my, 2)) < 12) { hit = true; break; }
+                }
+                window._poleCanvas.style.pointerEvents = hit ? 'auto' : 'none';
+                window._poleCanvas.style.cursor = hit ? 'pointer' : '';
             });
         }
-        
+
+        function updatePoleLabels() { drawPoleCanvas(); } // 하위 호환
+        function updatePoleVisibility() { drawPoleCanvas(); } // 하위 호환
+        window.updatePoleVisibility = updatePoleVisibility;
+
         // 노드 클릭
         function isPoleType(t) {
             return t==='pole'||t==='pole_existing'||t==='pole_new'||t==='pole_removed';
         }
 
+        // 함체 위치 선택용 원 오버레이
+        var _junctionCircle = null;
+        var _junctionPole   = null;
+
+        function showJunctionRadius(poleNode) {
+            _junctionPole = poleNode;
+            if (_junctionCircle) _junctionCircle.setMap(null);
+            _junctionCircle = new kakao.maps.Circle({
+                center: new kakao.maps.LatLng(poleNode.lat, poleNode.lng),
+                radius: 20,
+                strokeWeight: 2,
+                strokeColor: '#1a6fd4',
+                strokeOpacity: 0.9,
+                strokeStyle: 'dashed',
+                fillColor: '#1a6fd4',
+                fillOpacity: 0.08
+            });
+            _junctionCircle.setMap(map._m);
+            showStatus('원 안에서 함체 위치를 클릭하세요  (ESC: 취소)');
+        }
+
+        function clearJunctionRadius() {
+            if (_junctionCircle) { _junctionCircle.setMap(null); _junctionCircle = null; }
+            _junctionPole = null;
+        }
+
+        // 두 좌표 간 거리(m)
+        function latlngDist(lat1, lng1, lat2, lng2) {
+            var R = 6371000;
+            var dLat = (lat2 - lat1) * Math.PI / 180;
+            var dLng = (lng2 - lng1) * Math.PI / 180;
+            var a = Math.sin(dLat/2)*Math.sin(dLat/2) +
+                    Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*
+                    Math.sin(dLng/2)*Math.sin(dLng/2);
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        }
+
         function onNodeClick(node) {
+            // junction 추가 모드
+            if (addingMode && addingType === 'junction') {
+                if (isPoleType(node.type)) {
+                    document.getElementById('junctionConfirmPopup').style.display = 'none';
+                    showJunctionRadius(node);
+                } else {
+                    showStatus('전주를 선택해 주세요');
+                }
+                return;
+            }
+
             if (connectingMode) {
                 if (isPoleType(node.type)) {
                     // 전주 직접 클릭 → 경유점으로 추가 (장비로 쓰지 않음)
@@ -411,73 +721,179 @@
         
         function showPoleModal(node) {
             const colors = { pole:'#1a6fd4', pole_existing:'#1a6fd4', pole_new:'#e53935', pole_removed:'#333333' };
-            const labels = { pole:'기설전주', pole_existing:'기설전주', pole_new:'신설전주', pole_removed:'철거전주' };
-            const color = colors[node.type]||'#1a6fd4';
-            const poleNum = (node.memo||'').replace('전산화번호: ','');
-            const modal = document.getElementById('menuModal');
-            document.getElementById('menuModalTitle').innerHTML =
-                `<span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${color};margin-right:6px;vertical-align:middle;"></span>${labels[node.type]||'전주'}`;
-            document.getElementById('menuButtons').innerHTML = `
+            // 현재 타입 (구버전 'pole' → pole_existing 취급)
+            const curType = (node.type === 'pole') ? 'pole_existing' : node.type;
+            const isSelf = (node.memo||'').includes('자가주:true');
+            const poleNum = (node.memo||'').replace('자가주:true','').replace('전산화번호: ','').trim();
+            const labelAngle  = node.labelAngle  != null ? node.labelAngle  : 0;
+            const labelOffset = node.labelOffset != null ? node.labelOffset : 20;
+
+            document.getElementById('menuModalTitle').innerHTML = `전주 정보`;
+
+            // 전주 모달은 폼 형태 → grid 해제
+            const menuButtons = document.getElementById('menuButtons');
+            if (!menuButtons) { console.error('menuButtons 요소 없음'); return; }
+            menuButtons.style.display = 'block';
+
+            menuButtons.innerHTML = `
                 <div style="padding:4px 0 12px;">
-                    <div style="margin-bottom:10px;">
-                        <label style="font-size:12px;color:#888;display:block;margin-bottom:3px;">전산화번호</label>
-                        <input id="poleNumInput" type="text" value="${escapeHtml(poleNum)}"
-                            style="width:100%;padding:7px 10px;border:1px solid #ddd;border-radius:6px;font-size:14px;box-sizing:border-box;">
-                    </div>
-                    <div style="margin-bottom:10px;">
-                        <label style="font-size:12px;color:#888;display:block;margin-bottom:3px;">전주번호</label>
-                        <input id="poleNameInput" type="text" value="${escapeHtml(node.name)}"
-                            style="width:100%;padding:7px 10px;border:1px solid #ddd;border-radius:6px;font-size:14px;box-sizing:border-box;">
-                    </div>
+
+                    <!-- 전주 종류 버튼 -->
                     <div style="margin-bottom:14px;">
                         <label style="font-size:12px;color:#888;display:block;margin-bottom:6px;">전주 종류</label>
-                        <div style="display:flex;gap:6px;">
+                        <div style="display:flex;gap:6px;" id="poleTypeButtons">
                             ${['pole_existing','pole_new','pole_removed'].map(t => {
-                                const active = t===node.type||(t==='pole_existing'&&node.type==='pole');
+                                const active = t === curType;
                                 const c = colors[t];
                                 const lbl = {pole_existing:'기설',pole_new:'신설',pole_removed:'철거'}[t];
-                                return `<button onclick="changePoleType('${node.id}','${t}')"
-                                    style="flex:1;padding:6px 4px;border-radius:6px;border:2px solid ${active?c:'#ddd'};background:${active?c+'22':'#fff'};font-size:12px;cursor:pointer;font-weight:${active?'bold':'normal'};">
-                                    <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${c};margin-right:3px;vertical-align:middle;"></span>${lbl}</button>`;
+                                return `<button id="poleTypeBtn_${t}" onclick="selectPoleType('${node.id}','${t}')"
+                                    style="flex:1;padding:8px 4px;border-radius:8px;border:2px solid ${active?c:'#ddd'};background:${active?c+'22':'#fff'};font-size:13px;cursor:pointer;font-weight:${active?'bold':'normal'};transition:all 0.15s;">
+                                    <span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${c};margin-right:4px;vertical-align:middle;"></span>${lbl}</button>`;
                             }).join('')}
                         </div>
                     </div>
+
+                    <!-- 전산화번호 -->
+                    <div style="margin-bottom:10px;">
+                        <label style="font-size:12px;color:#888;display:block;margin-bottom:3px;">전산화번호</label>
+                        <input id="poleNumInput" type="text" value="${escapeHtml(poleNum)}"
+                            placeholder="예: 8516W792"
+                            maxlength="8"
+                            style="width:100%;padding:7px 10px;border:1px solid #ddd;border-radius:6px;font-size:14px;box-sizing:border-box;">
+                    </div>
+
+                    <!-- 전주번호 -->
+                    <div style="margin-bottom:12px;">
+                        <label style="font-size:12px;color:#888;display:block;margin-bottom:3px;">전주번호</label>
+                        <input id="poleNameInput" type="text" value="${escapeHtml(node.name||'')}"
+                            placeholder="예: 나전간-335"
+                            style="width:100%;padding:7px 10px;border:1px solid #ddd;border-radius:6px;font-size:14px;box-sizing:border-box;">
+                    </div>
+
+                    <!-- 자가주 체크박스 -->
+                    <div style="margin-bottom:16px;padding:10px 12px;background:#f8f0ff;border-radius:8px;border:1px solid #d9b8f5;display:flex;align-items:center;gap:10px;">
+                        <input type="checkbox" id="poleSelfCheck" ${isSelf?'checked':''}
+                            style="width:18px;height:18px;cursor:pointer;accent-color:#9b59b6;">
+                        <label for="poleSelfCheck" style="font-size:14px;font-weight:bold;color:#7d3c98;cursor:pointer;flex:1;">
+                            자가주
+                            <span style="font-size:11px;color:#9b59b6;font-weight:normal;margin-left:6px;">체크 시 보라색으로 표시</span>
+                        </label>
+                        <svg width="14" height="14" viewBox="0 0 14 14">
+                            <circle cx="7" cy="7" r="6" fill="#9b59b6" stroke="white" stroke-width="2"/>
+                        </svg>
+                    </div>
+
+                    <!-- 라벨 각도 -->
+                    <div style="margin-bottom:12px;">
+                        <label style="font-size:12px;color:#888;display:flex;justify-content:space-between;margin-bottom:6px;">
+                            <span>라벨 각도</span>
+                            <span id="poleAngleVal" style="font-weight:bold;color:#333;">${labelAngle}°</span>
+                        </label>
+                        <input type="range" id="poleLabelAngle" min="-180" max="180" step="1" value="${labelAngle}"
+                            style="width:100%;accent-color:#1a6fd4;"
+                            oninput="document.getElementById('poleAngleVal').textContent=this.value+'°'; previewPoleLabel('${node.id}',this.value,document.getElementById('poleLabelOffset').value);">
+                        <div style="display:flex;justify-content:space-between;margin-top:4px;gap:6px;">
+                            ${[-90,-45,0,45,90].map(v=>`<button onclick="document.getElementById('poleLabelAngle').value=${v};document.getElementById('poleAngleVal').textContent='${v}°';previewPoleLabel('${node.id}',${v},document.getElementById('poleLabelOffset').value);"
+                                style="flex:1;padding:4px 2px;font-size:11px;border:1px solid #ddd;border-radius:5px;cursor:pointer;background:#f8f8f8;">${v}°</button>`).join('')}
+                        </div>
+                    </div>
+
+                    <!-- 라벨 좌우 위치 -->
+                    <div style="margin-bottom:16px;">
+                        <label style="font-size:12px;color:#888;display:flex;justify-content:space-between;margin-bottom:6px;">
+                            <span>좌우 위치</span>
+                            <span id="poleOffsetVal" style="font-weight:bold;color:#333;">${labelOffset}px</span>
+                        </label>
+                        <input type="range" id="poleLabelOffset" min="-500" max="500" step="1" value="${labelOffset}"
+                            style="width:100%;accent-color:#1a6fd4;"
+                            oninput="document.getElementById('poleOffsetVal').textContent=this.value+'px'; previewPoleLabel('${node.id}',document.getElementById('poleLabelAngle').value,this.value);">
+                    </div>
+
+                    <!-- 저장/삭제 버튼 -->
                     <div style="display:flex;gap:8px;">
-                        <button onclick="savePoleInfo('${node.id}')" style="flex:1;padding:10px;background:#1a6fd4;color:white;border:none;border-radius:8px;font-size:14px;font-weight:bold;cursor:pointer;">저장</button>
+                        <button onclick="resetPoleLabel('${node.id}')" style="flex:1;padding:10px;background:#f0f0f0;color:#555;border:1px solid #ddd;border-radius:8px;font-size:13px;cursor:pointer;">초기화</button>
+                        <button onclick="savePoleInfo('${node.id}')" style="flex:2;padding:10px;background:#1a6fd4;color:white;border:none;border-radius:8px;font-size:14px;font-weight:bold;cursor:pointer;">저장</button>
                         <button onclick="deletePole('${node.id}')" style="flex:1;padding:10px;background:#f44336;color:white;border:none;border-radius:8px;font-size:14px;cursor:pointer;">삭제</button>
                     </div>
                 </div>`;
-            modal.style.display = 'flex';
+
+            // 현재 선택된 타입 상태 저장 (저장 시 사용)
+            window._currentPoleType = curType;
+
+            document.getElementById('menuModal').classList.add('active');
+        }
+
+        // 전주 종류 선택 (모달 닫지 않고 버튼 스타일만 변경)
+        function selectPoleType(nodeId, newType) {
+            const colors = { pole_existing:'#1a6fd4', pole_new:'#e53935', pole_removed:'#333333' };
+            window._currentPoleType = newType;
+            ['pole_existing','pole_new','pole_removed'].forEach(t => {
+                const btn = document.getElementById('poleTypeBtn_'+t);
+                if (!btn) return;
+                const active = t === newType;
+                const c = colors[t];
+                btn.style.border = `2px solid ${active ? c : '#ddd'}`;
+                btn.style.background = active ? c+'22' : '#fff';
+                btn.style.fontWeight = active ? 'bold' : 'normal';
+            });
         }
 
         function savePoleInfo(nodeId) {
             const node = nodes.find(n=>n.id===nodeId); if(!node) return;
-            node.memo = '전산화번호: '+document.getElementById('poleNumInput').value.trim();
+            const isSelf = document.getElementById('poleSelfCheck').checked;
+            const poleNum = document.getElementById('poleNumInput').value.trim();
+            node.memo = (poleNum ? '전산화번호: '+poleNum : '') + (isSelf ? '자가주:true' : '');
             node.name = document.getElementById('poleNameInput').value.trim();
+            node.labelAngle  = parseInt(document.getElementById('poleLabelAngle').value)  || 0;
+            node.labelOffset = parseInt(document.getElementById('poleLabelOffset').value) ?? 20;
+            if (window._currentPoleType) node.type = window._currentPoleType;
             saveData(); closeMenuModal();
-            if(markers[nodeId]) markers[nodeId].setMap(null); delete markers[nodeId];
-            renderNode(node); updatePoleLabels(); showStatus('저장 완료');
+            drawPoleCanvas(); showStatus('저장 완료');
         }
 
-        function changePoleType(nodeId, newType) {
-            const node = nodes.find(n=>n.id===nodeId); if(!node) return;
-            node.type = newType; saveData(); closeMenuModal();
-            if(markers[nodeId]) markers[nodeId].setMap(null); delete markers[nodeId];
-            renderNode(node); updatePoleLabels(); showPoleModal(node);
+        // 저장 전 라벨 미리보기
+        function previewPoleLabel(nodeId, angle, offset) {
+            var node = nodes.find(function(n) { return n.id === nodeId; });
+            if (!node) return;
+            // 임시로 node에 적용 후 캔버스 다시 그림 (저장은 하지 않음)
+            var orig = { labelAngle: node.labelAngle, labelOffset: node.labelOffset };
+            node.labelAngle  = parseFloat(angle)  || 0;
+            node.labelOffset = parseFloat(offset) != null ? parseFloat(offset) : 20;
+            drawPoleCanvas();
+            node.labelAngle  = orig.labelAngle;
+            node.labelOffset = orig.labelOffset;
+        }
+
+        function resetPoleLabel(nodeId) {
+            document.getElementById('poleLabelAngle').value = 0;
+            document.getElementById('poleAngleVal').textContent = '0°';
+            document.getElementById('poleLabelOffset').value = 20;
+            document.getElementById('poleOffsetVal').textContent = '20px';
+            previewPoleLabel(nodeId, 0, 20);
         }
 
         function deletePole(nodeId) {
             if(!confirm('전주를 삭제할까요?')) return;
             const idx = nodes.findIndex(n=>n.id===nodeId);
             if(idx!==-1) nodes.splice(idx,1);
-            if(markers[nodeId]) markers[nodeId].setMap(null); delete markers[nodeId];
-            saveData(); closeMenuModal(); showStatus('전주 삭제 완료');
+            saveData(); drawPoleCanvas(); closeMenuModal(); showStatus('전주 삭제 완료');
         }
 
         // 메뉴 모달 표시
         function showMenuModal() {
             const menuButtons = document.getElementById('menuButtons');
             menuButtons.innerHTML = '';
+
+            // 기설/신설 토글: junction일 때만 표시
+            const toggle = document.getElementById('junctionTypeToggle');
+            if (toggle) {
+            if (selectedNode && selectedNode.type === 'junction') {
+                toggle.style.display = 'flex';
+                _updateJunctionTypeUI(selectedNode.isNew ? 'new' : 'existing');
+            } else {
+                toggle.style.display = 'none';
+            }
+            }
 
             function makeBtn(svgPath, label, onclick, danger=false) {
                 const btn = document.createElement('button');
@@ -562,7 +978,36 @@
         // 메뉴 모달 닫기
         function closeMenuModal() {
             document.getElementById('menuModal').classList.remove('active');
-            // selectedNode는 유지 (showNodeInfo에서 사용)
+            const _jtt = document.getElementById('junctionTypeToggle');
+            if (_jtt) _jtt.style.display = 'none';
+            const title = document.getElementById('menuModalTitle');
+            if (title) title.innerHTML = '선택하세요';
+            const mb = document.getElementById('menuButtons');
+            if (mb) mb.style.display = '';
+        }
+
+        function _updateJunctionTypeUI(type) {
+            const btnE = document.getElementById('junctionTypeBtnExisting');
+            const btnN = document.getElementById('junctionTypeBtnNew');
+            if (!btnE || !btnN) return;
+            if (type === 'new') {
+                btnE.style.background = 'white';   btnE.style.color = '#1a6fd4';
+                btnN.style.background = '#e53935'; btnN.style.color = 'white';
+            } else {
+                btnE.style.background = '#1a6fd4'; btnE.style.color = 'white';
+                btnN.style.background = 'white';   btnN.style.color = '#e53935';
+            }
+        }
+
+        function setJunctionType(type) {
+            if (!selectedNode || selectedNode.type !== 'junction') return;
+            selectedNode.isNew = (type === 'new');
+            _updateJunctionTypeUI(type);
+            saveData();
+            // 마커 다시 렌더링
+            if (markers[selectedNode.id]) markers[selectedNode.id].setMap(null);
+            delete markers[selectedNode.id];
+            renderNode(selectedNode);
         }
         
         // 접속정보 확인
@@ -588,5 +1033,245 @@
         }
         window.toggleSkyView = toggleSkyView;
 
+
+        // ==================== 데이터 내보내기 / 불러오기 ====================
+
+        function exportData() {
+            const data = {
+                version: DATA_VERSION,
+                exportedAt: new Date().toISOString(),
+                nodes: nodes,
+                connections: connections
+            };
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'eum_data_' + new Date().toISOString().slice(0,10) + '.json';
+            a.click();
+            URL.revokeObjectURL(url);
+            showStatus('내보내기 완료');
+        }
+
+        function importData(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    if (!data.nodes || !data.connections) {
+                        alert('올바른 이음 데이터 파일이 아닙니다.');
+                        return;
+                    }
+                    const count = data.nodes.length;
+                    if (!confirm(count + '개 노드를 불러옵니다. 현재 데이터는 덮어씌워집니다. 계속할까요?')) {
+                        event.target.value = '';
+                        return;
+                    }
+                    // 기존 마커/폴리라인 제거
+                    Object.values(markers).forEach(function(m) { m.setMap(null); });
+                    Object.keys(markers).forEach(function(k) { delete markers[k]; });
+                    polylines.forEach(function(p) { p.setMap(null); });
+                    polylines.length = 0;
+                    // 데이터 교체 후 렌더링
+                    nodes = data.nodes;
+                    connections = data.connections;
+                    saveData();
+                    renderAllNodes();
+                    renderAllConnections();
+                    updatePoleLabels();
+                    showStatus('불러오기 완료: ' + count + '개 노드, ' + connections.length + '개 연결');
+                } catch(err) {
+                    alert('파일 읽기 오류: ' + err.message);
+                }
+                event.target.value = '';
+            };
+            reader.readAsText(file);
+        }
+
+        window.exportData = exportData;
+        window.importData = importData;
+
         // 전역 노출
+        // ==================== 전주 범위 선택 ====================
+        var _poleSelectMode = false;
+        var _poleSelectDragging = false;
+        var _poleSelectStart = null;
+        var _poleSelectedNodes = [];
+        var _poleSelectMouseDown = null;
+        var _poleSelectMouseMove = null;
+        var _poleSelectMouseUp = null;
+        var _poleSelectKeyHandler = null;
+
+        function startPoleSelect() {
+            _poleSelectMode = true;
+            _poleSelectedNodes = [];
+            var btn = document.getElementById('poleSelectBtn');
+            if (btn) btn.classList.add('active');
+            // 패널은 드래그 후 mouseup에서 표시
+            document.getElementById('poleSelectPanel').style.display = 'none';
+            document.getElementById('poleSelectControls').style.display = 'none';
+            document.getElementById('poleSelectCount').textContent = '드래그로 전주를 선택하세요';
+            document.getElementById('poleSelectAngle').value = 0;
+            document.getElementById('poleSelectAngleVal').textContent = '0°';
+
+            var mapEl = map.getContainer();
+            mapEl.style.cursor = 'crosshair';
+            map._m.setDraggable(false); // 지도 드래그 비활성화
+
+            _poleSelectKeyHandler = function(e) {
+                if (e.key === 'Escape') cancelPoleSelect();
+            };
+            document.addEventListener('keydown', _poleSelectKeyHandler);
+
+            // 드래그 시작
+            _poleSelectMouseDown = function(e) {
+                if (!_poleSelectMode) return;
+                _poleSelectDragging = true;
+                var rect = mapEl.getBoundingClientRect();
+                _poleSelectStart = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+                var ov = document.getElementById('poleSelectOverlay');
+                ov.style.display = 'block';
+                ov.style.left   = _poleSelectStart.x + 'px';
+                ov.style.top    = _poleSelectStart.y + 'px';
+                ov.style.width  = '0px';
+                ov.style.height = '0px';
+                e.preventDefault();
+            };
+            _poleSelectMouseMove = function(e) {
+                if (!_poleSelectDragging) return;
+                var rect = mapEl.getBoundingClientRect();
+                var cur = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+                var ov = document.getElementById('poleSelectOverlay');
+                ov.style.left   = Math.min(_poleSelectStart.x, cur.x) + 'px';
+                ov.style.top    = Math.min(_poleSelectStart.y, cur.y) + 'px';
+                ov.style.width  = Math.abs(cur.x - _poleSelectStart.x) + 'px';
+                ov.style.height = Math.abs(cur.y - _poleSelectStart.y) + 'px';
+            };
+            _poleSelectMouseUp = function(e) {
+                if (!_poleSelectDragging) return;
+                _poleSelectDragging = false;
+                var rect = mapEl.getBoundingClientRect();
+                var end = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+                document.getElementById('poleSelectOverlay').style.display = 'none';
+
+                // 선택 범위 내 전주 찾기
+                var x1 = Math.min(_poleSelectStart.x, end.x);
+                var x2 = Math.max(_poleSelectStart.x, end.x);
+                var y1 = Math.min(_poleSelectStart.y, end.y);
+                var y2 = Math.max(_poleSelectStart.y, end.y);
+
+                _poleSelectedNodes = nodes.filter(function(n) {
+                    if (!isPoleType(n.type)) return false;
+                    var pt = map.latLngToLayerPoint({ lat: n.lat, lng: n.lng });
+                    return pt.x >= x1 && pt.x <= x2 && pt.y >= y1 && pt.y <= y2;
+                });
+
+                var count = _poleSelectedNodes.length;
+                document.getElementById('poleSelectCount').textContent =
+                    count > 0 ? count + '개 전주 선택됨' : '범위 안에 전주가 없습니다';
+                document.getElementById('poleSelectControls').style.display =
+                    count > 0 ? 'block' : 'none';
+
+                // 팝업 위치: 선택 영역 우하단 근처, 화면 밖으로 나가지 않게 조정
+                var panel = document.getElementById('poleSelectPanel');
+                panel.style.display = 'block';
+                var panelW = 290, panelH = count > 0 ? 180 : 80;
+                var px = x2 + 12;
+                var py = y2 + 12;
+                if (px + panelW > rect.width)  px = x2 - panelW - 4;
+                if (py + panelH > rect.height) py = y2 - panelH - 4;
+                panel.style.left = Math.max(4, px) + 'px';
+                panel.style.top  = Math.max(4, py) + 'px';
+
+                // 선택된 전주 하이라이트 (Canvas가 그림)
+                drawPoleCanvas();
+            };
+
+            mapEl.addEventListener('mousedown', _poleSelectMouseDown);
+            mapEl.addEventListener('mousemove', _poleSelectMouseMove);
+            mapEl.addEventListener('mouseup',   _poleSelectMouseUp);
+        }
+
+        function onPoleSelectAngleChange(val) {
+            document.getElementById('poleSelectAngleVal').textContent = val + '°';
+            var offset = parseInt(document.getElementById('poleSelectOffset').value) || 20;
+            _poleSelectedNodes.forEach(function(n) {
+                n.labelAngle  = parseFloat(val)    || 0;
+                n.labelOffset = parseFloat(offset) || 20;
+            });
+            drawPoleCanvas();
+        }
+
+        function onPoleSelectOffsetChange(val) {
+            document.getElementById('poleSelectOffsetVal').textContent = val + 'px';
+            var angle = parseFloat(document.getElementById('poleSelectAngle').value) || 0;
+            _poleSelectedNodes.forEach(function(n) {
+                n.labelAngle  = angle;
+                n.labelOffset = parseFloat(val) || 20;
+            });
+            drawPoleCanvas();
+        }
+
+        function resetPoleSelectLabel() {
+            document.getElementById('poleSelectAngle').value = 0;
+            document.getElementById('poleSelectAngleVal').textContent = '0°';
+            document.getElementById('poleSelectOffset').value = 20;
+            document.getElementById('poleSelectOffsetVal').textContent = '20px';
+            _poleSelectedNodes.forEach(function(n){n.labelAngle=0;n.labelOffset=20;});
+            drawPoleCanvas();
+        }
+
+        function applyPoleSelectAngle() {
+            var angle  = parseInt(document.getElementById('poleSelectAngle').value)  || 0;
+            var offset = parseInt(document.getElementById('poleSelectOffset').value) || 20;
+            _poleSelectedNodes.forEach(function(n) {
+                n.labelAngle  = angle;
+                n.labelOffset = offset;
+            });
+            saveData();
+            drawPoleCanvas();
+            showStatus(_poleSelectedNodes.length + '개 전주 라벨 저장 완료');
+            cancelPoleSelect();
+        }
+
+        function cancelPoleSelect() {
+            _poleSelectMode = false;
+            _poleSelectDragging = false;
+            _poleSelectedNodes = [];
+            drawPoleCanvas();
+            document.getElementById('poleSelectPanel').style.display = 'none';
+            document.getElementById('poleSelectOverlay').style.display = 'none';
+            var btn = document.getElementById('poleSelectBtn');
+            if (btn) btn.classList.remove('active');
+            var mapEl = map.getContainer();
+            mapEl.style.cursor = '';
+            map._m.setDraggable(true); // 지도 드래그 복원
+            if (_poleSelectMouseDown) mapEl.removeEventListener('mousedown', _poleSelectMouseDown);
+            if (_poleSelectMouseMove) mapEl.removeEventListener('mousemove', _poleSelectMouseMove);
+            if (_poleSelectMouseUp)   mapEl.removeEventListener('mouseup',   _poleSelectMouseUp);
+            if (_poleSelectKeyHandler) document.removeEventListener('keydown', _poleSelectKeyHandler);
+        }
+
+        window.resetPoleLabel           = resetPoleLabel;
+        window.setJunctionType          = setJunctionType;
+        window.startPoleSelect          = startPoleSelect;
+        window.cancelPoleSelect         = cancelPoleSelect;
+        window.onPoleSelectAngleChange  = onPoleSelectAngleChange;
+        window.onPoleSelectOffsetChange = onPoleSelectOffsetChange;
+        window.applyPoleSelectAngle     = applyPoleSelectAngle;
+        window.resetPoleSelectLabel     = resetPoleSelectLabel;
+
+        // 전주 모달 함수
+        window.selectPoleType  = selectPoleType;
+        window.previewPoleLabel = previewPoleLabel;
+        window.savePoleInfo    = savePoleInfo;
+        window.deletePole      = deletePole;
+
+        // 메뉴/노드 모달 함수
+        window.closeMenuModal  = closeMenuModal;
+
+        // ==================== 전주 범위 선택 끝 ====================
+
         window.initMap = initMap;
