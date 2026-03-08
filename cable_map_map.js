@@ -1,4 +1,4 @@
-        function initMap() {
+        async function initMap() {
             // ── Canvas 전주 레이어 변수 ──
             var _poleCanvas = null;
             var _poleCtx = null;
@@ -57,11 +57,28 @@
                 
                 // 카카오맵 자체 타일 사용
                 
-                // 데이터 로드
-                loadData();
+                // 1단계: 전주 제외하고 빠르게 로드 (localStorage만)
+                await loadData({ polesLater: true });
 
-                // 지도 이동/줌 시 위치 저장 + 팝업 닫기
-                map.on('zoomend', function() { drawPoleCanvas(); });
+                // 지도 이동/줌 시 위치 저장 + 팝업 닫기 + 뷰포트 전주 로딩
+                function refreshPoles() {
+                    if (!map || !map._m) return;
+                    const z = map.getZoom();
+                    if (z < 14) { drawPoleCanvas(); return; } // 줌 작으면 전주 숨김
+                    const b = map._m.getBounds();
+                    const sw = b.getSouthWest(), ne = b.getNorthEast();
+                    // 여유 20% 확장
+                    const dLat = (ne.getLat() - sw.getLat()) * 0.2;
+                    const dLng = (ne.getLng() - sw.getLng()) * 0.2;
+                    loadPolesInBounds({
+                        minLat: sw.getLat() - dLat, maxLat: ne.getLat() + dLat,
+                        minLng: sw.getLng() - dLng, maxLng: ne.getLng() + dLng
+                    }).then(function(cnt) {
+                        drawPoleCanvas();
+                    });
+                }
+
+                map.on('zoomend', function() { refreshPoles(); });
                 // zoom_changed는 shim moveend에서 처리
                 map.on('moveend', function() {
                     if (!map || !map._m) return;
@@ -70,13 +87,18 @@
                     const z = map.getZoom();
                     localStorage.setItem('mapView', JSON.stringify({lat:c.getLat(), lng:c.getLng(), zoom:z}));
                     map.closePopup();
-                    drawPoleCanvas();
+                    refreshPoles();
                 });
-                
-                // 기존 노드와 연결 표시
+
+                // 함체/연결 즉시 표시
                 renderAllNodes();
                 renderAllConnections();
                 initPoleCanvasEvents();
+
+                // 2단계: 현재 뷰포트 전주 백그라운드 로드
+                showStatus('전주 로딩 중...');
+                refreshPoles();
+                showStatus('');
                 
                 // ESC 키 이벤트 (케이블 연결 취소)
                 document.addEventListener('keydown', function(e) {
@@ -106,7 +128,7 @@
                                 var junctionNode = {
                                     id: Date.now().toString(),
                                     type: 'junction',
-                                    lat: e.latlng.lat, lng: e.latlng.lng,
+                                    lat: _junctionPole.lat, lng: _junctionPole.lng,
                                     name: poleName, fiberType: '', memo: '',
                                     ofds: [], ports: [], rns: [],
                                     inOrder: [], connDirections: {}
@@ -520,9 +542,9 @@
             ctx.clearRect(0, 0, w, h);
 
             var zoom = map.getZoom();
-            if (zoom < 12) return; // 너무 작은 줌은 전주 전체 숨김
+            if (zoom < 14) return; // 카카오 레벨 5 이상(zoom<14)은 전주 숨김
 
-            var showLabel = zoom >= 16;
+            var showLabel = zoom >= 15; // 레벨 3까지 라벨 표시
 
             ctx.save();
             nodes.forEach(function(node) {
@@ -595,7 +617,7 @@
                 var mx = e.clientX - rect.left;
                 var my = e.clientY - rect.top;
                 var zoom = map.getZoom();
-                if (zoom < 12) return;
+                if (zoom < 14) return;
                 var hit = null, bestDist = 12; // 클릭 반경 12px
                 nodes.forEach(function(node) {
                     if (!isPoleType(node.type)) return;
@@ -619,7 +641,7 @@
                 var mx = e.clientX - rect.left;
                 var my = e.clientY - rect.top;
                 var zoom = map.getZoom();
-                if (zoom < 12) { window._poleCanvas.style.cursor = ''; return; }
+                if (zoom < 14) { window._poleCanvas.style.cursor = ''; return; }
                 var hit = false;
                 for (var i = 0; i < nodes.length; i++) {
                     var node = nodes[i];
@@ -679,6 +701,11 @@
         }
 
         function onNodeClick(node) {
+            // 지도 click 이벤트와 중복 방지
+            window._nodeJustClicked = true;
+            clearTimeout(window._nodeClickTimer);
+            window._nodeClickTimer = setTimeout(function(){ window._nodeJustClicked = false; }, 600);
+
             // junction 추가 모드
             if (addingMode && addingType === 'junction') {
                 if (isPoleType(node.type)) {
@@ -697,15 +724,30 @@
                     return;
                 }
                 if (connectingFromNode.id !== node.id) {
-                    connectingToNode = node;
-                    if (pendingWaypoints.length > 0) {
-                        const last = pendingWaypoints[pendingWaypoints.length - 1];
-                        const dlat = Math.abs(last.lat - node.lat);
-                        const dlng = Math.abs(last.lng - node.lng);
-                        if (dlat < 0.0005 && dlng < 0.0005) pendingWaypoints.pop();
-                    }
-                    clearPreviewOnly();
-                    showConnectionModal();
+                    // 직접 노드 클릭 시 확인 팝업 먼저 표시
+                    var _nodeTarget = node;
+                    var typeLabel = node.type === 'junction'   ? '[함체]'
+                        : node.type === 'datacenter' ? '[국사]'
+                        : node.type === 'onu'        ? '[ONU]'
+                        : node.type === 'subscriber' ? '[가입자]'
+                        : node.type === 'cctv'       ? '[CCTV]'
+                        : '';
+                    showConfirm(
+                        typeLabel + " '" + (node.name || '이름없음') + "'에 연결하시겠습니까?",
+                        function() {
+                            connectingToNode = _nodeTarget;
+                            if (pendingWaypoints.length > 0) {
+                                const last = pendingWaypoints[pendingWaypoints.length - 1];
+                                const dlat = Math.abs(last.lat - _nodeTarget.lat);
+                                const dlng = Math.abs(last.lng - _nodeTarget.lng);
+                                if (dlat < 0.0005 && dlng < 0.0005) pendingWaypoints.pop();
+                            }
+                            clearPreviewOnly();
+                            showConnectionModal();
+                        },
+                        node.name || '',
+                        '연결'
+                    );
                 } else {
                     showStatus('같은 장비는 연결할 수 없습니다');
                 }
@@ -1090,8 +1132,92 @@
             reader.readAsText(file);
         }
 
+        // ==================== 전주 임포트 (js_poll.json) ====================
+        function importPollData(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = async function(e) {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    if (!data.nodes || !Array.isArray(data.nodes)) {
+                        alert('올바른 전주 데이터 파일이 아닙니다.');
+                        return;
+                    }
+
+                    // 이름있는 전주만 필터 (추출장비-N 제외)
+                    const pollNodes = data.nodes.filter(function(n) {
+                        return n.name && n.name.indexOf('추출장비') !== 0;
+                    });
+
+                    if (pollNodes.length === 0) {
+                        alert('임포트할 전주 데이터가 없습니다.');
+                        return;
+                    }
+
+                    // 기존 전주 전산화번호 목록 (중복 방지)
+                    const existingMemos = new Set(
+                        nodes.filter(function(n) { return isPoleType(n.type); })
+                             .map(function(n) { return (n.memo || '').replace('전산화번호: ', '').trim(); })
+                             .filter(Boolean)
+                    );
+
+                    const now = Date.now();
+                    const newPoleNodes = [];
+                    let addCount = 0, skipCount = 0;
+                    const BATCH = 200;
+
+                    // 배치 처리 (UI 프리즈 방지)
+                    for (let i = 0; i < pollNodes.length; i += BATCH) {
+                        const batch = pollNodes.slice(i, i + BATCH);
+                        batch.forEach(function(n, j) {
+                            const poleNum = (n.memo || '').replace('전산화번호: ', '').trim();
+                            if (poleNum && existingMemos.has(poleNum)) {
+                                skipCount++;
+                                return;
+                            }
+                            const newNode = {
+                                id: 'poll_' + now + '_' + (i + j),
+                                type: 'pole_existing',
+                                lat: n.lat,
+                                lng: n.lng,
+                                name: n.name || '',
+                                memo: poleNum ? '전산화번호: ' + poleNum : '',
+                                fiberType: '',
+                                ofds: [],
+                                ports: [],
+                                rns: [],
+                                inOrder: [],
+                                connDirections: {}
+                            };
+                            nodes.push(newNode);
+                            newPoleNodes.push(newNode);
+                            if (poleNum) existingMemos.add(poleNum);
+                            addCount++;
+                        });
+
+                        // 진행 상황 표시 + UI 숨 쉬기
+                        showStatus('전주 임포트 중... ' + Math.min(i + BATCH, pollNodes.length) + ' / ' + pollNodes.length);
+                        await new Promise(function(r) { setTimeout(r, 0); });
+                    }
+
+                    // 저장 (renderNode 없이 — 전주는 Canvas로 일괄 렌더링)
+                    await saveData();
+                    drawPoleCanvas();
+                    showStatus('전주 임포트 완료: ' + addCount + '개 추가, ' + skipCount + '개 중복 건너뜀');
+                    alert('전주 임포트 완료\n추가: ' + addCount + '개\n중복 건너뜀: ' + skipCount + '개');
+
+                } catch(err) {
+                    alert('파일 읽기 오류: ' + err.message);
+                }
+                event.target.value = '';
+            };
+            reader.readAsText(file);
+        }
+
         window.exportData = exportData;
         window.importData = importData;
+        window.importPollData = importPollData;
 
         // 전역 노출
         // ==================== 전주 범위 선택 ====================
@@ -1273,5 +1399,11 @@
         window.closeMenuModal  = closeMenuModal;
 
         // ==================== 전주 범위 선택 끝 ====================
+
+        // ==================== 구간 캡쳐 ====================
+
+        // ==================== 구간 캡쳐 (지도 위치 두 점 선택) ====================
+
+
 
         window.initMap = initMap;

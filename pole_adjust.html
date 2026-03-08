@@ -13,185 +13,308 @@ body { font-family: sans-serif; background: #1a1a2e; color: #eee; height: 100vh;
     border-bottom: 1px solid #333; flex-wrap: wrap;
 }
 #toolbar h2 { font-size: 15px; color: #7eb8f7; margin-right: 8px; }
-#status { font-size: 13px; color: #aaa; flex: 1; }
-#offset-info { font-size: 13px; color: #ffd700; background: #1a1a00; padding: 6px 12px; border-radius: 6px; display: none; }
+#status { font-size: 13px; color: #aaa; flex: 1; min-width: 200px; }
+#ref-panel {
+    display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+}
+.ref-box {
+    font-size: 12px; padding: 5px 10px; border-radius: 6px;
+    background: #1a1a00; border: 1px solid #555; color: #ccc; min-width: 140px;
+}
+.ref-box.set { border-color: #4CAF50; color: #4CAF50; }
 button {
-    padding: 8px 16px; font-size: 13px; border-radius: 6px;
+    padding: 7px 14px; font-size: 13px; border-radius: 6px;
     cursor: pointer; border: none; font-weight: bold;
 }
 .btn-apply  { background: #4CAF50; color: white; display: none; }
-.btn-cancel { background: #f44336; color: white; display: none; }
+.btn-cancel { background: #f44336; color: white; }
 .btn-reset  { background: #555; color: #eee; }
 #map { flex: 1; }
 #log {
     position: fixed; bottom: 16px; right: 16px;
-    background: rgba(0,0,0,0.8); color: #0f0; font-family: monospace;
-    font-size: 12px; padding: 10px; border-radius: 8px;
-    max-width: 320px; display: none;
+    background: rgba(0,0,0,0.85); color: #0f0; font-family: monospace;
+    font-size: 12px; padding: 12px; border-radius: 8px;
+    max-width: 340px; display: none; white-space: pre-line; line-height: 1.6;
 }
 </style>
 </head>
 <body>
 <div id="toolbar">
     <h2>📍 전주 좌표 보정</h2>
-    <div id="status">전주를 클릭해서 선택하세요</div>
-    <div id="offset-info"></div>
-    <button class="btn-apply"  id="btnApply"  onclick="applyOffset()">✅ 전체 적용</button>
-    <button class="btn-cancel" id="btnCancel" onclick="cancelSelect()">✖ 취소</button>
+    <div id="status">전주를 클릭해서 기준점을 선택하세요</div>
+    <div id="ref-panel">
+        <div class="ref-box" id="ref1-box">기준점 1: 미설정</div>
+        <div class="ref-box" id="ref2-box">기준점 2: 미설정</div>
+    </div>
+    <button class="btn-apply"  id="btnApply"  onclick="applyTransform()">✅ 전체 적용</button>
+    <button class="btn-cancel" onclick="resetRefs()">✖ 초기화</button>
     <button class="btn-reset"  onclick="loadAndRender()">🔄 새로고침</button>
 </div>
 <div id="map"></div>
-<div id="log"></div>
+<div id="log" id="log"></div>
 
 <script>
 var map = L.map('map').setView([37.44, 128.66], 13);
-
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© OpenStreetMap'
 }).addTo(map);
 
-var markers = [];
-var selectedMarker = null;
-var selectedNode = null;
-var offsetLat = 0, offsetLng = 0;
 var allNodes = [];
+var leafletMarkers = [];
 
-function log(msg) {
+// 기준점 2개: { node, marker, newLat, newLng }
+var refs = [null, null];
+var selectingRef = 0; // 0=첫번째 선택 중, 1=두번째 선택 중, 2=완료
+
+// ==================== IndexedDB ====================
+function getDB() {
+    return new Promise(function(resolve, reject) {
+        var req = indexedDB.open('cableMapDB', 1);
+        req.onupgradeneeded = function(e) {
+            var db = e.target.result;
+            if (!db.objectStoreNames.contains('poles'))
+                db.createObjectStore('poles', { keyPath: 'id' });
+        };
+        req.onsuccess = function(e) { resolve(e.target.result); };
+        req.onerror   = function(e) { reject(e.target.error); };
+    });
+}
+
+function idbGetAll(db) {
+    return new Promise(function(resolve, reject) {
+        var req = db.transaction('poles','readonly').objectStore('poles').getAll();
+        req.onsuccess = function() { resolve(req.result); };
+        req.onerror   = function() { reject(req.error); };
+    });
+}
+
+function idbReplaceAll(db, nodes) {
+    return new Promise(function(resolve, reject) {
+        var tx = db.transaction('poles','readwrite');
+        var store = tx.objectStore('poles');
+        store.clear();
+        nodes.forEach(function(n) { store.put(n); });
+        tx.oncomplete = resolve;
+        tx.onerror = function() { reject(tx.error); };
+    });
+}
+
+// ==================== 렌더링 ====================
+function setStatus(msg) { document.getElementById('status').textContent = msg; }
+function logMsg(msg) {
     var el = document.getElementById('log');
     el.style.display = 'block';
     el.textContent = msg;
 }
 
-function setStatus(msg) {
-    document.getElementById('status').textContent = msg;
-}
-
-function loadAndRender() {
-    // 기존 마커 제거
-    markers.forEach(function(m) { map.removeLayer(m); });
-    markers = [];
-    selectedMarker = null;
-    selectedNode = null;
-    offsetLat = 0; offsetLng = 0;
-
-    document.getElementById('offset-info').style.display = 'none';
+async function loadAndRender() {
+    leafletMarkers.forEach(function(m) { map.removeLayer(m); });
+    leafletMarkers = [];
+    refs = [null, null];
+    selectingRef = 0;
+    updateRefBoxes();
     document.getElementById('btnApply').style.display = 'none';
-    document.getElementById('btnCancel').style.display = 'none';
+    document.getElementById('log').style.display = 'none';
 
-    allNodes = JSON.parse(localStorage.getItem('fiberNodes') || '[]')
-        .filter(function(n) { return n.type === 'pole'; });
+    try {
+        var db = await getDB();
+        allNodes = await idbGetAll(db);
+    } catch(e) {
+        // IndexedDB 없으면 localStorage fallback
+        allNodes = JSON.parse(localStorage.getItem('fiberNodes') || '[]')
+            .filter(function(n) { return n.type === 'pole' || n.type === 'pole_existing' || n.type === 'pole_new' || n.type === 'pole_removed'; });
+    }
 
     if (allNodes.length === 0) {
-        setStatus('❌ localStorage에 전주 데이터 없음');
+        setStatus('❌ 전주 데이터 없음 — 이음에서 전주를 먼저 임포트하세요');
         return;
     }
 
-    // 지도 중심 이동
     var avgLat = allNodes.reduce(function(s,n){return s+n.lat;},0) / allNodes.length;
     var avgLng = allNodes.reduce(function(s,n){return s+n.lng;},0) / allNodes.length;
     map.setView([avgLat, avgLng], 14);
 
     allNodes.forEach(function(node) {
-        var icon = L.divIcon({
-            html: '<div style="width:12px;height:12px;background:#4a90e2;border:2px solid white;border-radius:50%;"></div>',
-            className: '',
-            iconSize: [12, 12],
-            iconAnchor: [6, 6]
-        });
-        var m = L.marker([node.lat, node.lng], { icon: icon, draggable: false }).addTo(map);
+        var m = L.circleMarker([node.lat, node.lng], {
+            radius: 5, color: '#fff', weight: 1.5,
+            fillColor: '#4a90e2', fillOpacity: 0.9
+        }).addTo(map);
         m.bindTooltip(node.name, { permanent: false, direction: 'top', offset: [0, -8] });
-
-        m.on('click', function() { selectMarker(m, node); });
+        m.on('click', function() { onMarkerClick(m, node); });
         m._nodeData = node;
-        markers.push(m);
+        leafletMarkers.push(m);
     });
 
-    setStatus('전주 ' + allNodes.length + '개 로드됨 — 기준 전주를 클릭하세요');
+    setStatus('전주 ' + allNodes.length + '개 로드됨 — 기준점 1번을 클릭하세요');
 }
 
-function selectMarker(m, node) {
-    // 이전 선택 초기화
-    if (selectedMarker) {
-        selectedMarker.setIcon(L.divIcon({
-            html: '<div style="width:12px;height:12px;background:#4a90e2;border:2px solid white;border-radius:50%;"></div>',
-            className: '', iconSize: [12,12], iconAnchor: [6,6]
-        }));
-        selectedMarker.dragging.disable();
+// ==================== 기준점 선택 ====================
+function onMarkerClick(m, node) {
+    if (selectingRef >= 2) return;
+
+    var idx = selectingRef;
+    refs[idx] = { node: node, marker: m, newLat: node.lat, newLng: node.lng };
+
+    // 마커 강조
+    m.setStyle({ fillColor: idx === 0 ? '#ff5722' : '#9c27b0', radius: 9, weight: 2.5 });
+
+    // 드래그 활성화
+    m.dragging && m.dragging.enable ? enableDrag(m, idx) : null;
+
+    selectingRef++;
+    updateRefBoxes();
+
+    if (selectingRef === 1) {
+        setStatus('기준점 1 선택됨 — 드래그해서 실제 위치로 이동 후, 기준점 2번을 클릭하세요');
+    } else {
+        setStatus('기준점 2 선택됨 — 두 기준점을 드래그해서 실제 위치로 맞추세요');
+        checkReady();
     }
-
-    selectedMarker = m;
-    selectedNode = node;
-
-    // 선택 마커 강조
-    m.setIcon(L.divIcon({
-        html: '<div style="width:18px;height:18px;background:#ff5722;border:3px solid white;border-radius:50%;box-shadow:0 0 8px #ff5722;"></div>',
-        className: '', iconSize: [18,18], iconAnchor: [9,9]
-    }));
-    m.dragging.enable();
-
-    m.off('dragend');
-    m.on('dragend', function(e) {
-        var newPos = e.target.getLatLng();
-        offsetLat = newPos.lat - node.lat;
-        offsetLng = newPos.lng - node.lng;
-
-        var dNorth = Math.round(offsetLat * 111320);
-        var dEast  = Math.round(offsetLng * 111320 * Math.cos(node.lat * Math.PI/180));
-
-        document.getElementById('offset-info').style.display = 'block';
-        document.getElementById('offset-info').textContent =
-            '오프셋: ' + (dNorth>0?'+':'') + dNorth + 'm (남북) / ' + (dEast>0?'+':'') + dEast + 'm (동서)';
-
-        document.getElementById('btnApply').style.display = 'inline-block';
-        document.getElementById('btnCancel').style.display = 'inline-block';
-
-        setStatus('"' + node.name + '" 이동 완료 — 전체 적용하려면 ✅ 버튼 클릭');
-        log('기준: ' + node.name + '\n오프셋 lat: ' + offsetLat.toFixed(7) + '\n오프셋 lng: ' + offsetLng.toFixed(7));
-    });
-
-    setStatus('"' + node.name + '" 선택됨 — 드래그해서 실제 위치로 이동');
-    document.getElementById('btnCancel').style.display = 'inline-block';
 }
 
-function applyOffset() {
-    if (offsetLat === 0 && offsetLng === 0) return;
+function enableDrag(m, idx) {
+    // circleMarker는 dragging 미지원 → 지도 클릭으로 위치 지정
+    // 대신 선택 후 지도 클릭 → 해당 기준점 이동
+    m.on('click', function(e) {
+        L.DomEvent.stopPropagation(e);
+        // 이미 선택된 기준점 재클릭 → 지도 클릭으로 위치 지정 모드
+        setStatus('기준점 ' + (idx+1) + ' 선택됨 — 지도에서 실제 위치를 클릭하세요');
+        map.once('click', function(ev) {
+            refs[idx].newLat = ev.latlng.lat;
+            refs[idx].newLng = ev.latlng.lng;
+            m.setLatLng([ev.latlng.lat, ev.latlng.lng]);
+            updateRefBoxes();
+            checkReady();
+            setStatus('기준점 ' + (idx+1) + ' 위치 지정 완료' + (selectingRef >= 2 ? ' — ✅ 버튼으로 전체 적용' : ''));
+        });
+    });
+}
 
-    var allStored = JSON.parse(localStorage.getItem('fiberNodes') || '[]');
-    var count = 0;
-    allStored.forEach(function(n) {
-        if (n.type === 'pole') {
-            n.lat += offsetLat;
-            n.lng += offsetLng;
-            count++;
+function updateRefBoxes() {
+    for (var i = 0; i < 2; i++) {
+        var box = document.getElementById('ref' + (i+1) + '-box');
+        if (refs[i]) {
+            var dLat = refs[i].newLat - refs[i].node.lat;
+            var dLng = refs[i].newLng - refs[i].node.lng;
+            var dN = Math.round(dLat * 111320);
+            var dE = Math.round(dLng * 111320 * Math.cos(refs[i].node.lat * Math.PI/180));
+            box.className = 'ref-box set';
+            box.textContent = '기준' + (i+1) + ': ' + refs[i].node.name +
+                ' (' + (dN>=0?'+':'') + dN + 'm, ' + (dE>=0?'+':'') + dE + 'm)';
+        } else {
+            box.className = 'ref-box';
+            box.textContent = '기준점 ' + (i+1) + ': 미설정';
         }
-    });
-    localStorage.setItem('fiberNodes', JSON.stringify(allStored));
-
-    log('✅ ' + count + '개 전주 좌표 보정 완료');
-    setStatus('✅ ' + count + '개 전주 좌표 보정 완료 — 이음 v2에서 Ctrl+Shift+R 하세요!');
-    document.getElementById('btnApply').style.display = 'none';
-    document.getElementById('btnCancel').style.display = 'none';
-
-    loadAndRender();
+    }
 }
 
-function cancelSelect() {
-    if (selectedMarker) {
-        // 원래 위치로 복귀
-        selectedMarker.setLatLng([selectedNode.lat, selectedNode.lng]);
-        selectedMarker.setIcon(L.divIcon({
-            html: '<div style="width:12px;height:12px;background:#4a90e2;border:2px solid white;border-radius:50%;"></div>',
-            className: '', iconSize: [12,12], iconAnchor: [6,6]
-        }));
-        selectedMarker.dragging.disable();
-        selectedMarker = null;
-        selectedNode = null;
+function checkReady() {
+    var r0 = refs[0], r1 = refs[1];
+    if (!r0 || !r1) return;
+    var d0 = Math.abs(r0.newLat - r0.node.lat) + Math.abs(r0.newLng - r0.node.lng);
+    var d1 = Math.abs(r1.newLat - r1.node.lat) + Math.abs(r1.newLng - r1.node.lng);
+    if (d0 > 0 || d1 > 0) {
+        document.getElementById('btnApply').style.display = 'inline-block';
     }
-    offsetLat = 0; offsetLng = 0;
-    document.getElementById('offset-info').style.display = 'none';
+}
+
+function resetRefs() {
+    leafletMarkers.forEach(function(m) {
+        m.setStyle({ fillColor: '#4a90e2', radius: 5, weight: 1.5 });
+        if (m._nodeData) m.setLatLng([m._nodeData.lat, m._nodeData.lng]);
+    });
+    refs = [null, null];
+    selectingRef = 0;
+    updateRefBoxes();
     document.getElementById('btnApply').style.display = 'none';
-    document.getElementById('btnCancel').style.display = 'none';
-    setStatus('취소됨 — 다시 전주를 클릭하세요');
+    document.getElementById('log').style.display = 'none';
+    setStatus('초기화됨 — 기준점 1번을 클릭하세요');
+}
+
+// ==================== 어파인 변환 ====================
+// 기준점 2개로 전체 전주에 선형 보간/어파인 변환 적용
+// src1→dst1, src2→dst2 를 만족하는 변환: translate + rotate + scale
+function computeAffine(src1, src2, dst1, dst2) {
+    // 복소수 어파인: dst = a*src + b
+    // src1 → dst1: a*src1 + b = dst1
+    // src2 → dst2: a*src2 + b = dst2
+    // → a = (dst2 - dst1) / (src2 - src1)
+    // → b = dst1 - a*src1
+    var sx1 = src1.lng, sy1 = src1.lat;
+    var sx2 = src2.lng, sy2 = src2.lat;
+    var dx1 = dst1.lng, dy1 = dst1.lat;
+    var dx2 = dst2.lng, dy2 = dst2.lat;
+
+    var dSrcX = sx2 - sx1, dSrcY = sy2 - sy1;
+    var dDstX = dx2 - dx1, dDstY = dy2 - dy1;
+    var denom = dSrcX*dSrcX + dSrcY*dSrcY;
+
+    if (denom < 1e-20) {
+        // 두 기준점 거의 같은 위치 → 단순 오프셋만
+        return { mode: 'offset', dLat: dy1 - sy1, dLng: dx1 - sx1 };
+    }
+
+    // a = (dDst / dSrc) 복소수 나눗셈
+    var aR = (dDstX*dSrcX + dDstY*dSrcY) / denom;
+    var aI = (dDstY*dSrcX - dDstX*dSrcY) / denom;
+    // b = dst1 - a*src1
+    var bR = dx1 - (aR*sx1 - aI*sy1);
+    var bI = dy1 - (aR*sy1 + aI*sx1);
+
+    return { mode: 'affine', aR: aR, aI: aI, bR: bR, bI: bI };
+}
+
+function applyTransformToNode(tf, node) {
+    if (tf.mode === 'offset') {
+        return { lat: node.lat + tf.dLat, lng: node.lng + tf.dLng };
+    }
+    var x = node.lng, y = node.lat;
+    var newX = tf.aR*x - tf.aI*y + tf.bR;
+    var newY = tf.aR*y + tf.aI*x + tf.bI;
+    return { lat: newY, lng: newX };
+}
+
+async function applyTransform() {
+    var r0 = refs[0], r1 = refs[1];
+    if (!r0 || !r1) { alert('기준점 2개를 모두 설정하세요'); return; }
+
+    var src1 = { lat: r0.node.lat, lng: r0.node.lng };
+    var src2 = { lat: r1.node.lat, lng: r1.node.lng };
+    var dst1 = { lat: r0.newLat,   lng: r0.newLng   };
+    var dst2 = { lat: r1.newLat,   lng: r1.newLng   };
+
+    var tf = computeAffine(src1, src2, dst1, dst2);
+
+    // 오차 계산
+    var p1 = applyTransformToNode(tf, r0.node);
+    var p2 = applyTransformToNode(tf, r1.node);
+    var e1m = Math.round(Math.sqrt(Math.pow((p1.lat-dst1.lat)*111320,2)+Math.pow((p1.lng-dst1.lng)*111320,2)));
+    var e2m = Math.round(Math.sqrt(Math.pow((p2.lat-dst2.lat)*111320,2)+Math.pow((p2.lng-dst2.lng)*111320,2)));
+
+    // 전주 전체에 적용
+    var count = 0;
+    allNodes.forEach(function(node) {
+        var p = applyTransformToNode(tf, node);
+        node.lat = p.lat;
+        node.lng = p.lng;
+        count++;
+    });
+
+    // IndexedDB 저장
+    try {
+        var db = await getDB();
+        await idbReplaceAll(db, allNodes);
+        logMsg('✅ ' + count + '개 전주 좌표 보정 완료\n' +
+            '변환 방식: ' + tf.mode + '\n' +
+            '기준1 오차: ' + e1m + 'm\n기준2 오차: ' + e2m + 'm\n\n' +
+            '이음 v2에서 Ctrl+Shift+R 하세요!');
+        setStatus('✅ ' + count + '개 전주 보정 완료 — 이음 v2에서 새로고침하세요');
+    } catch(e) {
+        logMsg('❌ 저장 실패: ' + e.message);
+    }
+
+    document.getElementById('btnApply').style.display = 'none';
+    loadAndRender();
 }
 
 // 시작
