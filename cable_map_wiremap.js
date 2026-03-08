@@ -170,6 +170,22 @@
                         tubeBtn.textContent = '튜브 선택';
                         tubeBtn.style.cssText = `padding:2px 8px; background:rgba(0,0,0,0.15); color:${tc.text}; border:1px solid ${tc.border}; border-radius:4px; font-size:10px; font-weight:bold; cursor:pointer;`;
                         tubeBtn.onclick = (e) => { e.stopPropagation(); selectInTube(inIdx, tubeNum, portNum, end); };
+                        const inLabelToggle = document.createElement('button');
+                        inLabelToggle.dataset.show = '1';
+                        inLabelToggle.textContent = '👁';
+                        inLabelToggle.title = '이름표 ON/OFF';
+                        inLabelToggle.style.cssText = 'padding:2px 7px; background:rgba(91,141,238,0.85); color:white; border:none; border-radius:4px; font-size:10px; cursor:pointer;';
+                        inLabelToggle.onclick = (e) => {
+                            e.stopPropagation();
+                            const show = inLabelToggle.dataset.show === '1';
+                            inLabelToggle.dataset.show = show ? '0' : '1';
+                            inLabelToggle.style.background = show ? 'rgba(150,150,150,0.7)' : 'rgba(91,141,238,0.85)';
+                            inLabelToggle.textContent = show ? '👁‍🗨' : '👁';
+                            document.querySelectorAll(`.wm-namelabel[data-tube="in-${inIdx}-${tubeNum}"]`).forEach(el => {
+                                el.style.display = show ? 'none' : '';
+                            });
+                        };
+                        btnGroup.insertBefore(inLabelToggle, btnGroup.firstChild);
                         btnGroup.appendChild(tubeBtn);
                         tubeLabel.appendChild(btnGroup);
                         inList.appendChild(tubeLabel);
@@ -229,6 +245,8 @@
                         if (dcPort !== null) {
                             const dcInfo = getDcInfo(selectedNode, portNum);
                             const dcBadge = document.createElement('span');
+                            dcBadge.className = 'wm-namelabel';
+                            dcBadge.dataset.tube = `in-${inIdx}-${tubeNum}`;
                             dcBadge.style.cssText = `font-size:11px; padding:2px 7px; border-radius:10px; margin-right:4px; background:#546e7a; color:white; white-space:nowrap; font-weight:bold; flex-shrink:0;`;
                             if (dcInfo) {
                                 const parts = [dcInfo.dcName, dcInfo.ofdName, `${dcInfo.portNum}번`].filter(Boolean);
