@@ -231,6 +231,7 @@
 
         window.loadPolesFromIDB  = loadPolesFromIDB;
         window.loadPolesInBounds = loadPolesInBounds;
+        window.getDB             = getDB;
 
         // GitHub Pages 자동 전주 로드 (구역별 분할 파일)
         // progressCb(phase, cur, tot) — phase: 'fetch' | 'import' | 'done'

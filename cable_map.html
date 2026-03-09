@@ -100,6 +100,41 @@
             z-index: 9999;
         }
         .tb-btn:hover::after { opacity: 1; }
+
+        /* 전주 검색창 */
+        .pole-search-wrap {
+            display: flex; align-items: center; gap: 4px;
+            background: #fff; border: 1.5px solid #d0d7e2; border-radius: 8px;
+            padding: 3px 8px; height: 36px; box-sizing: border-box;
+            transition: border-color .15s;
+        }
+        .pole-search-wrap:focus-within { border-color: #1a6fd4; }
+        .pole-search-wrap input {
+            border: none; outline: none; font-size: 13px;
+            width: 140px; background: transparent; color: #222;
+            font-family: 'Noto Sans KR', sans-serif;
+        }
+        .pole-search-wrap input::placeholder { color: #aaa; }
+        .pole-search-wrap button {
+            background: none; border: none; cursor: pointer;
+            padding: 0 2px; color: #1a6fd4; font-size: 16px; line-height: 1;
+        }
+        #poleSearchResults {
+            position: absolute; top: 54px; left: 0; right: 0; z-index: 3000;
+            background: #fff; border: 1px solid #d0d7e2; border-radius: 8px;
+            box-shadow: 0 4px 16px rgba(0,0,0,.13); max-height: 280px;
+            overflow-y: auto; display: none;
+        }
+        #poleSearchResults .sr-item {
+            padding: 9px 14px; cursor: pointer; font-size: 13px;
+            border-bottom: 1px solid #f0f0f0; display: flex; flex-direction: column; gap: 2px;
+        }
+        #poleSearchResults .sr-item:last-child { border-bottom: none; }
+        #poleSearchResults .sr-item:hover { background: #f0f5ff; }
+        #poleSearchResults .sr-item .sr-name { font-weight: 600; color: #1a6fd4; }
+        #poleSearchResults .sr-item .sr-memo { color: #888; font-size: 12px; }
+        #poleSearchResults .sr-empty { padding: 14px; text-align: center; color: #999; font-size: 13px; }
+
         /* 취소 버튼 */
         .tb-cancel {
             display: none;
@@ -908,6 +943,22 @@
             </svg>
             <span class="tb-label" style="color:#e74c3c;">초기화</span>
         </button>
+
+        <!-- 전주 검색 -->
+        <div style="position:relative;margin-left:6px;">
+            <div class="pole-search-wrap">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#aaa" stroke-width="2.2" stroke-linecap="round"><circle cx="10" cy="10" r="7"/><line x1="15.5" y1="15.5" x2="21" y2="21"/></svg>
+                <input id="poleSearchInput" type="text" placeholder="전주번호 / 전산화번호"
+                    oninput="onPoleSearchInput(this.value)"
+                    onkeydown="if(event.key==='Enter')onPoleSearchEnter()"
+                    onfocus="if(this.value.trim().length>=1)showPoleSearchResults()"
+                    onblur="setTimeout(hidePoleSearchResults,200)">
+                <button onclick="onPoleSearchEnter()" title="검색">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="10" cy="10" r="7"/><line x1="15.5" y1="15.5" x2="21" y2="21"/></svg>
+                </button>
+            </div>
+            <div id="poleSearchResults"></div>
+        </div>
 
         <!-- 취소 버튼 (노드 추가 모드일 때만 표시) -->
         <button class="tb-cancel" id="cancelBtn" onclick="cancelAdding()">

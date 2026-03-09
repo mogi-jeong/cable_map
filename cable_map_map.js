@@ -715,19 +715,21 @@
 
                 // 선택된 전주 하이라이트
                 var isSelected = _poleSelectedNodes && _poleSelectedNodes.some(function(n){ return n.id === node.id; });
+                var isSearchHit = window._poleSearchHighlight && window._poleSearchHighlight === node.id;
 
                 // 원 그리기
+                var radius = isSearchHit ? 10 : 6;
                 ctx.beginPath();
-                ctx.arc(x, y, 6, 0, Math.PI * 2);
-                ctx.fillStyle = color;
+                ctx.arc(x, y, radius, 0, Math.PI * 2);
+                ctx.fillStyle = isSearchHit ? '#f39c12' : color;
                 ctx.fill();
-                ctx.strokeStyle = isSelected ? '#9b59b6' : 'white';
-                ctx.lineWidth   = isSelected ? 3 : 2;
+                ctx.strokeStyle = isSearchHit ? '#e67e22' : (isSelected ? '#9b59b6' : 'white');
+                ctx.lineWidth   = isSearchHit ? 3 : (isSelected ? 3 : 2);
                 ctx.stroke();
 
-                // 라벨 그리기 (zoom >= 15, 케이블/장비 연결된 전주만)
-                if (showLabel && labelPoleIds) {
-                    if (!labelPoleIds.has(node.id)) return;
+                // 라벨 그리기 (zoom >= 15, 케이블/장비 연결된 전주만 — 검색 결과는 항상)
+                if (isSearchHit || (showLabel && labelPoleIds)) {
+                    if (!isSearchHit && !labelPoleIds.has(node.id)) return;
 
                     var poleNum = node.memo ? node.memo.replace('전산화번호: ','').replace(/자가주:true/g,'').trim() : '';
                     var label   = (poleNum && node.name) ? poleNum + '/' + node.name : (node.name || '');
@@ -1767,5 +1769,114 @@
         a.click();
         URL.revokeObjectURL(a.href);
         alert('poles_offsets.json 다운로드 완료\nC:\\cable_map 폴더로 이동 후 python update_poles.py 실행하세요.');
+    };
+})();
+
+// ==================== 전주 검색 ====================
+(function() {
+    var _searchTimer = null;
+    var _lastResults = [];
+
+    // IDB에서 전주 검색 (이름 or 전산화번호)
+    async function searchPoles(query) {
+        query = query.trim().toLowerCase();
+        if (!query) return [];
+
+        var db = await (window.getDB ? window.getDB() : null);
+        if (!db) return [];
+
+        return new Promise(function(resolve) {
+            var results = [];
+            var tx = db.transaction('poles', 'readonly');
+            var store = tx.objectStore('poles');
+            store.openCursor().onsuccess = function(e) {
+                var cursor = e.target.result;
+                if (cursor) {
+                    var n = cursor.value;
+                    var name = (n.name || '').toLowerCase();
+                    var memo = (n.memo || '').toLowerCase();
+                    if (name.includes(query) || memo.includes(query)) {
+                        results.push(n);
+                        if (results.length >= 30) { resolve(results); return; }
+                    }
+                    cursor.continue();
+                } else {
+                    resolve(results);
+                }
+            };
+            tx.onerror = function() { resolve([]); };
+        });
+    }
+
+    function renderResults(results) {
+        var box = document.getElementById('poleSearchResults');
+        if (!box) return;
+        if (results.length === 0) {
+            box.innerHTML = '<div class="sr-empty">검색 결과 없음</div>';
+        } else {
+            box.innerHTML = results.map(function(n, i) {
+                var poleNum = (n.memo || '').replace('전산화번호: ', '').trim();
+                return '<div class="sr-item" onmousedown="onPoleSearchSelect(' + i + ')">' +
+                    '<span class="sr-name">' + escapeHtml(n.name || '') + '</span>' +
+                    (poleNum ? '<span class="sr-memo">전산화번호: ' + escapeHtml(poleNum) + '</span>' : '') +
+                    '</div>';
+            }).join('');
+        }
+        box.style.display = 'block';
+        _lastResults = results;
+    }
+
+    window.showPoleSearchResults = function() {
+        var box = document.getElementById('poleSearchResults');
+        if (box && _lastResults.length > 0) box.style.display = 'block';
+    };
+    window.hidePoleSearchResults = function() {
+        var box = document.getElementById('poleSearchResults');
+        if (box) box.style.display = 'none';
+    };
+
+    window.onPoleSearchInput = function(val) {
+        if (_searchTimer) clearTimeout(_searchTimer);
+        val = val.trim();
+        if (val.length < 1) { window.hidePoleSearchResults(); return; }
+        _searchTimer = setTimeout(async function() {
+            var results = await searchPoles(val);
+            renderResults(results);
+        }, 250);
+    };
+
+    window.onPoleSearchEnter = async function() {
+        var val = (document.getElementById('poleSearchInput') || {}).value || '';
+        val = val.trim();
+        if (!val) return;
+        var results = await searchPoles(val);
+        if (results.length === 0) {
+            renderResults([]);
+        } else if (results.length === 1) {
+            window.onPoleSearchSelect(0);
+        } else {
+            renderResults(results);
+        }
+    };
+
+    window.onPoleSearchSelect = function(idx) {
+        var n = _lastResults[idx];
+        if (!n || !map) return;
+        window.hidePoleSearchResults();
+        // 카카오 레벨 2 (zoom ~16) 로 이동
+        map._m.setCenter(new kakao.maps.LatLng(n.lat, n.lng));
+        map._m.setLevel(2);
+        if (typeof refreshPoles === 'function') refreshPoles();
+        // 잠시 후 해당 전주 하이라이트
+        setTimeout(function() {
+            if (typeof drawPoleCanvas === 'function') {
+                window._poleSearchHighlight = n.id;
+                drawPoleCanvas();
+                setTimeout(function() {
+                    window._poleSearchHighlight = null;
+                    drawPoleCanvas();
+                }, 3000);
+            }
+        }, 300);
     };
 })();
