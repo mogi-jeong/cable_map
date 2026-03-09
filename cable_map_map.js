@@ -826,7 +826,7 @@
                     if (_lastHoverId !== hit.id) {
                         _lastHoverId = hit.id;
                         var poleNum = (hit.memo || '').replace('전산화번호: ', '').replace(/자가주:true/g, '').trim();
-                        var label = (poleNum && hit.name) ? hit.name + ' (' + poleNum + ')' : (hit.name || poleNum || '');
+                        var label = (poleNum && hit.name) ? poleNum + '/' + hit.name : (hit.name || poleNum || '');
                         if (label) {
                             _tooltip.textContent = label;
                             _tooltip.style.display = 'block';
