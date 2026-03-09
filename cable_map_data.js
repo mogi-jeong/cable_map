@@ -260,7 +260,14 @@
             // 버전 같고 데이터 있으면 스킵
             if (remoteVersion === localVersion && poleCount > 0) return false;
 
-            // 2. IDB 초기화
+            // 2. poles_offsets.json 로드 (없으면 빈 객체)
+            let remoteOffsets = {};
+            try {
+                const ro = await fetch('./poles_offsets.json?_=' + Date.now());
+                if (ro.ok) remoteOffsets = await ro.json();
+            } catch(e) {}
+
+            // 3. IDB 초기화
             await idbClear(db);
 
             // 3. 구역 파일 순차 다운로드 + 임포트
@@ -291,8 +298,8 @@
                         const n       = src[j];
                         const poleNum = (n.memo || '').replace('전산화번호: ', '').trim();
                         const region  = n.id ? (n.id.split('_')[1] || '') : '';
-                        const off     = window.getPoleRegionOffset && region
-                                        ? window.getPoleRegionOffset(region) : null;
+                        const off     = remoteOffsets[region] || (window.getPoleRegionOffset && region
+                                        ? window.getPoleRegionOffset(region) : null);
                         batch.push({
                             id:     'poll_' + now + '_' + (globalIdx++),
                             type:   'pole_existing',

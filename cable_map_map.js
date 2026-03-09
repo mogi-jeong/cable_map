@@ -1709,4 +1709,21 @@
         var saved = getSavedOffsets();
         return saved[region] || null;
     };
+
+    // 오프셋 내보내기 — poles_offsets.json 다운로드
+    window.exportOffsets = function() {
+        var saved = getSavedOffsets();
+        if (Object.keys(saved).length === 0) {
+            alert('저장된 오프셋이 없습니다.\n먼저 위치를 조정하고 "이 지역 저장"을 눌러주세요.');
+            return;
+        }
+        var json = JSON.stringify(saved, null, 2);
+        var blob = new Blob([json], { type: 'application/json' });
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'poles_offsets.json';
+        a.click();
+        URL.revokeObjectURL(a.href);
+        alert('poles_offsets.json 다운로드 완료\nC:\\cable_map 폴더로 이동 후 python update_poles.py 실행하세요.');
+    };
 })();

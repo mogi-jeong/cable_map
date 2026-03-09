@@ -56,6 +56,12 @@ with open(ROOT / 'poles_version.json', 'w', encoding='utf-8') as f:
 
 git_files += ['poles_index.json', 'poles_version.json']
 
+# poles_offsets.json 있으면 같이 포함
+offsets_json = ROOT / 'poles_offsets.json'
+if offsets_json.exists():
+    git_files.append('poles_offsets.json')
+    print('poles_offsets.json 포함')
+
 # 5. git add + commit + push
 subprocess.run(['git', 'add'] + git_files, cwd=ROOT)
 subprocess.run(['git', 'commit', '-m', f'update: poles data v{version}'], cwd=ROOT)
