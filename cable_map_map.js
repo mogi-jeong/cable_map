@@ -716,16 +716,19 @@
                 // 선택된 전주 하이라이트
                 var isSelected = _poleSelectedNodes && _poleSelectedNodes.some(function(n){ return n.id === node.id; });
                 var isSearchHit = window._poleSearchHighlight && window._poleSearchHighlight === node.id;
+                var isMoving = _poleMoveMode && isSelected;
 
                 // 원 그리기
                 var radius = isSearchHit ? 10 : 6;
+                ctx.globalAlpha = isMoving ? 0.5 : 1.0;
                 ctx.beginPath();
                 ctx.arc(x, y, radius, 0, Math.PI * 2);
-                ctx.fillStyle = isSearchHit ? '#f39c12' : color;
+                ctx.fillStyle = isSearchHit ? '#f39c12' : (isMoving ? '#2980b9' : color);
                 ctx.fill();
                 ctx.strokeStyle = isSearchHit ? '#e67e22' : (isSelected ? '#9b59b6' : 'white');
                 ctx.lineWidth   = isSearchHit ? 3 : (isSelected ? 3 : 2);
                 ctx.stroke();
+                ctx.globalAlpha = 1.0;
 
                 // 라벨 그리기 (zoom >= 15, 케이블/장비 연결된 전주만 — 검색 결과는 항상)
                 if (isSearchHit || (showLabel && labelPoleIds)) {
@@ -1595,6 +1598,13 @@
         }
 
         function cancelPoleSelect() {
+            // 이동 모드 중이면 원본 복원
+            if (_poleMoveMode && _poleMoveOrigins) {
+                _poleMoveOrigins.forEach(function(o) { o.node.lat = o.lat; o.node.lng = o.lng; });
+                _poleMoveOrigins = null;
+                _poleMoveMode = false;
+                _cleanupPoleMove(map.getContainer());
+            }
             _poleSelectMode = false;
             _poleSelectDragging = false;
             _poleSelectedNodes = [];
@@ -1610,6 +1620,97 @@
             if (_poleSelectMouseMove) mapEl.removeEventListener('mousemove', _poleSelectMouseMove);
             if (_poleSelectMouseUp)   mapEl.removeEventListener('mouseup',   _poleSelectMouseUp);
             if (_poleSelectKeyHandler) document.removeEventListener('keydown', _poleSelectKeyHandler);
+        }
+
+        // ── 전주 이동 모드 ──
+        var _poleMoveMode = false;
+        var _poleMoveOrigins = null;   // 이동 전 원본 좌표
+        var _poleMoveMouseMove = null;
+        var _poleMoveClick = null;
+        var _poleMoveKeyHandler = null;
+
+        window.startPoleMoveMode = function() {
+            if (!_poleSelectedNodes || _poleSelectedNodes.length === 0) return;
+            _poleMoveMode = true;
+
+            // 원본 좌표 저장 (기준점: 선택 전주 중심)
+            _poleMoveOrigins = _poleSelectedNodes.map(function(n) {
+                return { node: n, lat: n.lat, lng: n.lng };
+            });
+            var sumLat = 0, sumLng = 0;
+            _poleMoveOrigins.forEach(function(o) { sumLat += o.lat; sumLng += o.lng; });
+            var centerLat = sumLat / _poleMoveOrigins.length;
+            var centerLng = sumLng / _poleMoveOrigins.length;
+
+            // 패널 숨기기, 커서 변경, 지도 드래그 비활성화
+            document.getElementById('poleSelectPanel').style.display = 'none';
+            map._m.setDraggable(false);
+            showStatus('지도를 클릭하면 전주가 이동됩니다  (ESC: 취소)');
+
+            var mapEl = map.getContainer();
+
+            _poleMoveMouseMove = function(e) {
+                if (!_poleMoveMode) return;
+                var rect = mapEl.getBoundingClientRect();
+                var mx = e.clientX - rect.left;
+                var my = e.clientY - rect.top;
+                var latlng = map.containerPointToLatLng({ x: mx, y: my });
+                var dLat = latlng.lat - centerLat;
+                var dLng = latlng.lng - centerLng;
+
+                // 전주를 마우스 위치 기준으로 오프셋 적용 (50% 불투명도는 drawPoleCanvas에서)
+                _poleMoveOrigins.forEach(function(o) {
+                    o.node.lat = o.lat + dLat;
+                    o.node.lng = o.lng + dLng;
+                });
+                drawPoleCanvas();
+            };
+
+            _poleMoveClick = function(e) {
+                if (!_poleMoveMode) return;
+                e.stopPropagation();
+                // 현재 위치로 확정 저장
+                _poleMoveMode = false;
+                _cleanupPoleMove(mapEl);
+                // IDB 업데이트
+                if (window.idbWritePolesBatch) {
+                    window.idbWritePolesBatch(_poleMoveOrigins.map(function(o) { return o.node; }));
+                }
+                saveData();
+                drawPoleCanvas();
+                showStatus(_poleMoveOrigins.length + '개 전주 이동 완료');
+                _poleMoveOrigins = null;
+                cancelPoleSelect();
+            };
+
+            _poleMoveKeyHandler = function(e) {
+                if (e.key === 'Escape') _cancelPoleMoveMode();
+            };
+
+            mapEl.addEventListener('mousemove', _poleMoveMouseMove);
+            mapEl.addEventListener('click',     _poleMoveClick, true);
+            document.addEventListener('keydown', _poleMoveKeyHandler);
+        };
+
+        function _cancelPoleMoveMode() {
+            if (!_poleMoveMode) return;
+            _poleMoveMode = false;
+            // 원본 좌표 복원
+            if (_poleMoveOrigins) {
+                _poleMoveOrigins.forEach(function(o) { o.node.lat = o.lat; o.node.lng = o.lng; });
+                _poleMoveOrigins = null;
+            }
+            _cleanupPoleMove(map.getContainer());
+            drawPoleCanvas();
+            cancelPoleSelect();
+        }
+
+        function _cleanupPoleMove(mapEl) {
+            map._m.setDraggable(true);
+            if (_poleMoveMouseMove) mapEl.removeEventListener('mousemove', _poleMoveMouseMove);
+            if (_poleMoveClick)     mapEl.removeEventListener('click',     _poleMoveClick, true);
+            if (_poleMoveKeyHandler) document.removeEventListener('keydown', _poleMoveKeyHandler);
+            _poleMoveMouseMove = _poleMoveClick = _poleMoveKeyHandler = null;
         }
 
         window.resetPoleLabel           = resetPoleLabel;
