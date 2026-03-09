@@ -1837,11 +1837,14 @@
                     var memo = (n.memo || '').toLowerCase();
                     if (name.includes(query) || memo.includes(query)) {
                         results.push(n);
-                        if (results.length >= 30) { resolve(results); return; }
                     }
                     cursor.continue();
                 } else {
-                    resolve(results);
+                    // 자연수 정렬: 1, 2, 3 ... 10, 11 순
+                    results.sort(function(a, b) {
+                        return (a.name || '').localeCompare(b.name || '', 'ko', { numeric: true });
+                    });
+                    resolve(results.slice(0, 30));
                 }
             };
             tx.onerror = function() { resolve([]); };
