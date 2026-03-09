@@ -670,10 +670,15 @@
             var labelPoleIds = null;
             if (showLabel) {
                 labelPoleIds = new Set();
-                // 케이블(connection)에 연결된 전주
+                // 케이블(connection)에 연결된 전주 (endpoints + 경유 전주)
                 connections.forEach(function(c) {
                     if (c.nodeA) labelPoleIds.add(c.nodeA);
                     if (c.nodeB) labelPoleIds.add(c.nodeB);
+                    if (c.waypoints) {
+                        c.waypoints.forEach(function(wp) {
+                            if (wp.snappedPole) labelPoleIds.add(wp.snappedPole);
+                        });
+                    }
                 });
                 // 비전주 노드(장비)와 같은 위치에 있는 전주 (1m 이내)
                 var equips = nodes.filter(function(n) { return !isPoleType(n.type); });
