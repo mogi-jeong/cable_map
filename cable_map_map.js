@@ -1572,6 +1572,7 @@
 (function() {
     var REGIONS = ['문막','신림','영월','원주','정선','평창','횡성'];
     var STORAGE_KEY = 'poleRegionOffsets';
+    var GLOBAL_OFFSET_KEY = 'poleGlobalOffset'; // 전체 적용 누적값
     // 1° ≈ 111,000m, 경도는 cos(37.4°) 보정
     var LAT_PER_M = 1 / 111000;
     var LNG_PER_M = 1 / (111000 * Math.cos(37.4 * Math.PI / 180));
@@ -1671,6 +1672,11 @@
         document.getElementById('offsetLngSlider').value = 0;
         document.getElementById('offsetLatVal').textContent = '0m';
         document.getElementById('offsetLngVal').textContent = '0m';
+        // 누적 글로벌 오프셋 저장 (내보내기용)
+        try {
+            var prev = JSON.parse(localStorage.getItem(GLOBAL_OFFSET_KEY) || '{"dLat":0,"dLng":0}');
+            localStorage.setItem(GLOBAL_OFFSET_KEY, JSON.stringify({ dLat: prev.dLat + dLat, dLng: prev.dLng + dLng }));
+        } catch(e) {}
         if (typeof refreshPoles === 'function') refreshPoles();
         alert('위치 적용 완료');
     };
@@ -1713,8 +1719,13 @@
     // 오프셋 내보내기 — poles_offsets.json 다운로드
     window.exportOffsets = function() {
         var saved = getSavedOffsets();
+        var globalOff = null;
+        try { globalOff = JSON.parse(localStorage.getItem(GLOBAL_OFFSET_KEY)); } catch(e) {}
+        // '*' 키: 전체 적용 누적값 (지역 오프셋이 없는 전주에 적용)
+        if (globalOff && (globalOff.dLat || globalOff.dLng)) saved['*'] = globalOff;
+
         if (Object.keys(saved).length === 0) {
-            alert('저장된 오프셋이 없습니다.\n먼저 위치를 조정하고 "이 지역 저장"을 눌러주세요.');
+            alert('저장된 오프셋이 없습니다.\n"이 지역 저장" 또는 "전체 적용"을 먼저 실행하세요.');
             return;
         }
         var json = JSON.stringify(saved, null, 2);

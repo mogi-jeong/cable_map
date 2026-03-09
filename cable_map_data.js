@@ -298,7 +298,7 @@
                         const n       = src[j];
                         const poleNum = (n.memo || '').replace('전산화번호: ', '').trim();
                         const region  = n.id ? (n.id.split('_')[1] || '') : '';
-                        const off     = remoteOffsets[region] || (window.getPoleRegionOffset && region
+                        const off     = remoteOffsets[region] || remoteOffsets['*'] || (window.getPoleRegionOffset && region
                                         ? window.getPoleRegionOffset(region) : null);
                         batch.push({
                             id:     'poll_' + now + '_' + (globalIdx++),
