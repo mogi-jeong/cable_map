@@ -289,8 +289,8 @@
             connectingFromNode = null;
             connectingToNode = null;
             // 커서 복원
-            const mapEl = document.getElementById('map');
-            if (mapEl) mapEl.style.cursor = '';
+            if (window._setMapCursorMode) window._setMapCursorMode('default');
+            else { const mapEl = document.getElementById('map'); if (mapEl) mapEl.style.cursor = ''; }
         }
         
         // 케이블 연결 시작 - 경유점 먼저 찍는 방식
@@ -308,8 +308,8 @@
             pendingWaypoints = [];
             waypointMarkers = [];
             // 커서 변경
-            const mapEl = document.getElementById('map');
-            if (mapEl) mapEl.style.cursor = 'crosshair';
+            if (window._setMapCursorMode) window._setMapCursorMode('crosshair');
+            else { const mapEl = document.getElementById('map'); if (mapEl) mapEl.style.cursor = 'crosshair'; }
             showStatus('지도를 클릭해 경유점을 찍고, 도착 장비를 클릭하세요 (ESC=취소)');
             map.off('click', onMapClickForWaypoint);
             map.on('click', onMapClickForWaypoint);
@@ -989,7 +989,8 @@
             _waypointInsertConn = connection;
             _waypointInsertPath = path;
             showStatus('📍 경유점 추가 모드 — 지도에서 추가할 위치를 클릭하세요 (ESC=취소)');
-            document.body.style.cursor = 'crosshair';
+            if (window._setMapCursorMode) window._setMapCursorMode('crosshair');
+            else document.body.style.cursor = 'crosshair';
 
             // 기존 핸들러 제거 후 새 등록
             if (_waypointMapClickHandler) {
@@ -1026,7 +1027,8 @@
             }
             _waypointInsertConn = null;
             _waypointInsertPath = null;
-            document.body.style.cursor = '';
+            if (window._setMapCursorMode) window._setMapCursorMode('default');
+            else document.body.style.cursor = '';
         }
 
         // ESC 키로 경유점 모드 취소

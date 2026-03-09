@@ -54,7 +54,75 @@
                 const _sv = localStorage.getItem('mapView');
                 const _mv = _sv ? JSON.parse(_sv) : {lat:37.3422, lng:127.9202, zoom:13};
                 map = L.map('map').setView([_mv.lat, _mv.lng], _mv.zoom);
-                
+
+                // ── 커서 관리자 ─────────────────────────────────────
+                // 카카오맵은 내부 div에 cursor:grab 을 인라인으로 세팅하므로
+                // 직접 mapEl.style.cursor 변경만으로는 자식 레이어에 안 먹힘.
+                // → CSS !important + 100ms 보정으로 카카오 내부 cursor 억제.
+                // 드래그 중(mousedown+mousemove)에만 grabbing 표시.
+                (function() {
+                    var _style = document.createElement('style');
+                    _style.id = 'map-cursor-override';
+                    document.head.appendChild(_style);
+
+                    var _dragging   = false;
+                    var _curMode    = 'default'; // 현재 모드: 'default' | 'crosshair'
+                    var _mapEl      = document.getElementById('map');
+
+                    function _apply(cur) {
+                        // ① CSS rule — #map 하위 전체 override
+                        _style.textContent =
+                            '#map { cursor: ' + cur + ' !important; }\n' +
+                            '#map > div, #map > div > div { cursor: ' + cur + ' !important; }\n' +
+                            '#map canvas { cursor: ' + cur + ' !important; }';
+                        // ② 카카오맵 최상위 내부 노드 inline 직접 override (상속 실패 대비)
+                        if (map && map._m) {
+                            var node = map._m.getNode();
+                            if (node) {
+                                node.style.setProperty('cursor', cur, 'important');
+                                var c1 = node.firstElementChild;
+                                if (c1) {
+                                    c1.style.setProperty('cursor', cur, 'important');
+                                    var c2 = c1.firstElementChild;
+                                    if (c2) c2.style.setProperty('cursor', cur, 'important');
+                                }
+                            }
+                        }
+                    }
+
+                    _apply('default');
+
+                    _mapEl.addEventListener('mousedown', function(e) {
+                        if (e.button === 0) _dragging = false;
+                    });
+                    _mapEl.addEventListener('mousemove', function(e) {
+                        if (e.buttons === 1 && !_dragging) {
+                            _dragging = true;
+                            _apply('grabbing');
+                        }
+                    });
+                    document.addEventListener('mouseup', function() {
+                        if (_dragging) {
+                            _dragging = false;
+                            _apply(_curMode);
+                        }
+                    });
+
+                    // 카카오맵이 내부적으로 cursor를 재설정할 수 있으므로 100ms 보정
+                    setInterval(function() {
+                        if (!_dragging) _apply(_curMode);
+                    }, 100);
+
+                    // 외부(ui.js 등)에서 crosshair / default 전환 시 이 함수로 통일
+                    window._mapCursorMode = _curMode;
+                    window._setMapCursorMode = function(mode) {
+                        _curMode = mode;
+                        window._mapCursorMode = mode;
+                        if (!_dragging) _apply(mode);
+                    };
+                })();
+                // ── 커서 관리자 끝 ────────────────────────────────────
+
                 // 카카오맵 자체 타일 사용
                 
                 // 1단계: 전주 제외하고 빠르게 로드 (localStorage만)
@@ -126,7 +194,25 @@
                 renderAllConnections();
                 initPoleCanvasEvents();
 
-                // 2단계: 현재 뷰포트 전주 백그라운드 로드
+                // 2단계: 자동 전주 로드 (GitHub Pages — 버전 변경 시 재다운로드)
+                const _autoLoaded = await autoLoadPolesIfNeeded(function(phase, cur, tot) {
+                    if (phase === 'fetch') {
+                        document.getElementById('importProgressTitle').textContent = '전주 데이터 다운로드 중...';
+                        document.getElementById('importProgressFill').style.width = '0%';
+                        document.getElementById('importProgressLabel').textContent = '잠시 기다려 주세요...';
+                        document.getElementById('importProgressOverlay').classList.add('active');
+                    } else if (phase === 'import') {
+                        var pct = Math.round(cur / tot * 100);
+                        document.getElementById('importProgressTitle').textContent = '전주 데이터 로드 중...';
+                        document.getElementById('importProgressFill').style.width = pct + '%';
+                        document.getElementById('importProgressLabel').textContent =
+                            cur.toLocaleString() + ' / ' + tot.toLocaleString() + '  (' + pct + '%)';
+                    } else if (phase === 'done') {
+                        document.getElementById('importProgressOverlay').classList.remove('active');
+                    }
+                });
+
+                // 3단계: 뷰포트 전주 로드
                 showStatus('전주 로딩 중...');
                 refreshPoles();
                 showStatus('');
@@ -145,6 +231,7 @@
                 
                 // 지도 클릭 이벤트
                 map.on('click', function(e) {
+                    if (!e || !e.latlng || e.latlng.lat == null) return; // 카카오 내부 이벤트 null 방어
                     if (typeof hideAllWaypointMarkers === 'function') hideAllWaypointMarkers();
                     if (addingMode && addingType === 'junction') {
                         // 원이 표시 중이면 원 안/밖 판단
@@ -153,13 +240,15 @@
                             if (dist <= 20) {
                                 // 원 안 → 함체 생성
                                 var poleName = _junctionPole.name || '';
+                                var poleLat  = _junctionPole.lat;  // clearJunctionRadius() 전에 저장
+                                var poleLng  = _junctionPole.lng;
                                 clearJunctionRadius();
                                 cancelAdding();
                                 document.getElementById('junctionConfirmPopup').style.display = 'none';
                                 var junctionNode = {
                                     id: Date.now().toString(),
                                     type: 'junction',
-                                    lat: _junctionPole.lat, lng: _junctionPole.lng,
+                                    lat: poleLat, lng: poleLng,
                                     name: poleName, fiberType: '', memo: '',
                                     ofds: [], ports: [], rns: [],
                                     inOrder: [], connDirections: {}
@@ -577,10 +666,13 @@
 
             var showLabel = zoom >= 15; // 레벨 3까지 라벨 표시
 
+            var _offLat = window._polePreviewOffset ? window._polePreviewOffset.dLat : 0;
+            var _offLng = window._polePreviewOffset ? window._polePreviewOffset.dLng : 0;
+
             ctx.save();
             nodes.forEach(function(node) {
                 if (!isPoleType(node.type)) return;
-                var pt = map.latLngToLayerPoint({ lat: node.lat, lng: node.lng });
+                var pt = map.latLngToLayerPoint({ lat: node.lat + _offLat, lng: node.lng + _offLng });
                 var x = pt.x, y = pt.y;
                 // 화면 밖 컬링 (여유 50px)
                 if (x < -50 || y < -50 || x > w + 50 || y > h + 50) return;
@@ -1240,13 +1332,18 @@
                                 skipCount++;
                                 continue;
                             }
+                            // 원본 ID에서 지역명 추출 (pole_문막_... → 문막)
+                            const region = n.id ? (n.id.split('_')[1] || '') : '';
+                            // 저장된 지역 오프셋 자동 적용
+                            const off = (window.getPoleRegionOffset && region) ? window.getPoleRegionOffset(region) : null;
                             idbBatch.push({
-                                id:   'poll_' + now + '_' + j,
-                                type: 'pole_existing',
-                                lat:  n.lat,
-                                lng:  n.lng,
-                                name: n.name || '',
-                                memo: poleNum ? '전산화번호: ' + poleNum : ''
+                                id:     'poll_' + now + '_' + j,
+                                type:   'pole_existing',
+                                lat:    n.lat  + (off ? off.dLat : 0),
+                                lng:    n.lng  + (off ? off.dLng : 0),
+                                name:   n.name || '',
+                                memo:   poleNum ? '전산화번호: ' + poleNum : '',
+                                region: region
                             });
                             if (poleNum) existingMemos.add(poleNum);
                             addCount++;
@@ -1306,7 +1403,7 @@
             document.getElementById('poleSelectAngleVal').textContent = '0°';
 
             var mapEl = map.getContainer();
-            mapEl.style.cursor = 'crosshair';
+            if (window._setMapCursorMode) window._setMapCursorMode('crosshair');
             map._m.setDraggable(false); // 지도 드래그 비활성화
 
             _poleSelectKeyHandler = function(e) {
@@ -1435,7 +1532,7 @@
             var btn = document.getElementById('poleSelectBtn');
             if (btn) btn.classList.remove('active');
             var mapEl = map.getContainer();
-            mapEl.style.cursor = '';
+            if (window._setMapCursorMode) window._setMapCursorMode('default');
             map._m.setDraggable(true); // 지도 드래그 복원
             if (_poleSelectMouseDown) mapEl.removeEventListener('mousedown', _poleSelectMouseDown);
             if (_poleSelectMouseMove) mapEl.removeEventListener('mousemove', _poleSelectMouseMove);
@@ -1470,3 +1567,146 @@
 
 
         window.initMap = initMap;
+
+// ==================== 전주 위치 보정 ====================
+(function() {
+    var REGIONS = ['문막','신림','영월','원주','정선','평창','횡성'];
+    var STORAGE_KEY = 'poleRegionOffsets';
+    // 1° ≈ 111,000m, 경도는 cos(37.4°) 보정
+    var LAT_PER_M = 1 / 111000;
+    var LNG_PER_M = 1 / (111000 * Math.cos(37.4 * Math.PI / 180));
+
+    window._polePreviewOffset = { dLat: 0, dLng: 0 };
+
+    function getSavedOffsets() {
+        try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); }
+        catch(e) { return {}; }
+    }
+    function setSavedOffsets(obj) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(obj));
+    }
+
+    function refreshSavedList() {
+        var saved = getSavedOffsets();
+        var el = document.getElementById('offsetSavedList');
+        if (!el) return;
+        var keys = Object.keys(saved);
+        if (keys.length === 0) { el.textContent = '저장된 지역 오프셋 없음'; return; }
+        el.innerHTML = keys.map(function(r) {
+            var o = saved[r];
+            var latM = Math.round(o.dLat / LAT_PER_M);
+            var lngM = Math.round(o.dLng / LNG_PER_M);
+            return '<b>' + r + '</b>: 북' + (latM >= 0 ? '+' : '') + latM + 'm '
+                 + '동' + (lngM >= 0 ? '+' : '') + lngM + 'm'
+                 + ' <span style="cursor:pointer;color:#e74c3c;" onclick="deleteRegionOffset(\'' + r + '\')">[삭제]</span>';
+        }).join('<br>');
+    }
+
+    window.openOffsetPanel = function() {
+        document.getElementById('poleOffsetPanel').classList.add('active');
+        document.getElementById('poleOffsetOverlay').classList.add('active');
+        document.getElementById('offsetLatSlider').value = 0;
+        document.getElementById('offsetLngSlider').value = 0;
+        document.getElementById('offsetLatVal').textContent = '0m';
+        document.getElementById('offsetLngVal').textContent = '0m';
+        window._polePreviewOffset = { dLat: 0, dLng: 0 };
+        refreshSavedList();
+    };
+
+    window.closeOffsetPanel = function() {
+        document.getElementById('poleOffsetPanel').classList.remove('active');
+        document.getElementById('poleOffsetOverlay').classList.remove('active');
+        window._polePreviewOffset = { dLat: 0, dLng: 0 };
+        if (typeof drawPoleCanvas === 'function') drawPoleCanvas();
+    };
+
+    window.updateOffsetPreview = function() {
+        var latM = parseInt(document.getElementById('offsetLatSlider').value);
+        var lngM = parseInt(document.getElementById('offsetLngSlider').value);
+        document.getElementById('offsetLatVal').textContent = (latM >= 0 ? '+' : '') + latM + 'm';
+        document.getElementById('offsetLngVal').textContent = (lngM >= 0 ? '+' : '') + lngM + 'm';
+        window._polePreviewOffset = { dLat: latM * LAT_PER_M, dLng: lngM * LNG_PER_M };
+        if (typeof drawPoleCanvas === 'function') drawPoleCanvas();
+    };
+
+    window.saveCurrentRegionOffset = function() {
+        var region = document.getElementById('offsetRegionSelect').value;
+        if (!region) { alert('지역을 선택해주세요.'); return; }
+        var latM = parseInt(document.getElementById('offsetLatSlider').value);
+        var lngM = parseInt(document.getElementById('offsetLngSlider').value);
+        var saved = getSavedOffsets();
+        saved[region] = { dLat: latM * LAT_PER_M, dLng: lngM * LNG_PER_M };
+        setSavedOffsets(saved);
+        refreshSavedList();
+        alert(region + ' 오프셋 저장 완료\n(다음 임포트 시 자동 적용됩니다)');
+    };
+
+    window.deleteRegionOffset = function(region) {
+        var saved = getSavedOffsets();
+        delete saved[region];
+        setSavedOffsets(saved);
+        refreshSavedList();
+    };
+
+    // 전체 적용: 현재 슬라이더값을 IDB 모든 전주에 적용
+    window.applyOffsetGlobal = async function() {
+        var latM = parseInt(document.getElementById('offsetLatSlider').value);
+        var lngM = parseInt(document.getElementById('offsetLngSlider').value);
+        if (latM === 0 && lngM === 0) { alert('오프셋이 0입니다.'); return; }
+        if (!confirm('전체 전주의 위치를 북' + (latM >= 0?'+':'') + latM + 'm / 동' + (lngM >= 0?'+':'') + lngM + 'm 이동합니다.\n계속하시겠습니까?')) return;
+        var dLat = latM * LAT_PER_M, dLng = lngM * LNG_PER_M;
+        document.getElementById('importProgressTitle').textContent = '위치 적용 중...';
+        document.getElementById('importProgressOverlay').classList.add('active');
+        await applyOffsetToAllPoles(
+            function() { return { dLat: dLat, dLng: dLng }; },
+            function(cur, tot) {
+                var pct = Math.round(cur / tot * 100);
+                document.getElementById('importProgressFill').style.width = pct + '%';
+                document.getElementById('importProgressLabel').textContent = cur.toLocaleString() + ' / ' + tot.toLocaleString() + '  (' + pct + '%)';
+            }
+        );
+        document.getElementById('importProgressOverlay').classList.remove('active');
+        window._polePreviewOffset = { dLat: 0, dLng: 0 };
+        document.getElementById('offsetLatSlider').value = 0;
+        document.getElementById('offsetLngSlider').value = 0;
+        document.getElementById('offsetLatVal').textContent = '0m';
+        document.getElementById('offsetLngVal').textContent = '0m';
+        if (typeof refreshPoles === 'function') refreshPoles();
+        alert('위치 적용 완료');
+    };
+
+    // 지역별 적용: 저장된 오프셋을 각 전주의 region 필드 기준으로 적용
+    window.applyOffsetByRegion = async function() {
+        var saved = getSavedOffsets();
+        if (Object.keys(saved).length === 0) { alert('저장된 지역 오프셋이 없습니다.'); return; }
+        var list = Object.keys(saved).map(function(r) {
+            var o = saved[r];
+            var latM = Math.round(o.dLat / LAT_PER_M), lngM = Math.round(o.dLng / LNG_PER_M);
+            return r + ': 북' + (latM>=0?'+':'') + latM + 'm 동' + (lngM>=0?'+':'') + lngM + 'm';
+        }).join('\n');
+        if (!confirm('다음 지역별 오프셋을 적용합니다:\n\n' + list + '\n\n계속하시겠습니까?')) return;
+        document.getElementById('importProgressTitle').textContent = '지역별 위치 적용 중...';
+        document.getElementById('importProgressOverlay').classList.add('active');
+        await applyOffsetToAllPoles(
+            function(node) {
+                var region = node.region || (node.id ? node.id.split('_')[1] : '');
+                return saved[region] || null;
+            },
+            function(cur, tot) {
+                var pct = Math.round(cur / tot * 100);
+                document.getElementById('importProgressFill').style.width = pct + '%';
+                document.getElementById('importProgressLabel').textContent = cur.toLocaleString() + ' / ' + tot.toLocaleString() + '  (' + pct + '%)';
+            }
+        );
+        document.getElementById('importProgressOverlay').classList.remove('active');
+        window._polePreviewOffset = { dLat: 0, dLng: 0 };
+        if (typeof refreshPoles === 'function') refreshPoles();
+        alert('지역별 위치 적용 완료');
+    };
+
+    // importPollData에서 사용: 지역 오프셋 자동 조회
+    window.getPoleRegionOffset = function(region) {
+        var saved = getSavedOffsets();
+        return saved[region] || null;
+    };
+})();

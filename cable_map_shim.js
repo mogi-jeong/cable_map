@@ -6,7 +6,7 @@
     function KMap(km){this._m=km;this._ls={};}
     KMap.prototype={
         setView:function(ll,z){this._m.setCenter(new kakao.maps.LatLng(ll[0],ll[1]));this._m.setLevel(Math.max(1,Math.min(14,18-z)));return this;},
-        _wfn:function(fn){return function(me){fn(me&&me.latLng?{latlng:{lat:me.latLng.getLat(),lng:me.latLng.getLng()}}:{});};},
+        _wfn:function(fn){return function(me){var lat=me&&me.latLng?me.latLng.getLat():null,lng=me&&me.latLng?me.latLng.getLng():null;fn(lat!=null?{latlng:{lat:lat,lng:lng}}:{});};},
         on:function(ev,fn){
             if(ev==='moveend'){
                 kakao.maps.event.addListener(this._m,'center_changed',function(){fn({});});
@@ -29,7 +29,7 @@
             kakao.maps.event.addListener(this._m,ev,w);
             return this;
         },
-        once:function(ev,fn){var self=this,w=function(me){self._rm(ev,fn);fn(me?{latlng:{lat:me.latLng.getLat(),lng:me.latLng.getLng()}}:{});};if(!this._ls[ev])this._ls[ev]=[];this._ls[ev].push({fn:fn,w:w});kakao.maps.event.addListener(this._m,ev,w);return this;},
+        once:function(ev,fn){var self=this,w=function(me){self._rm(ev,fn);var lat=me&&me.latLng?me.latLng.getLat():null,lng=me&&me.latLng?me.latLng.getLng():null;fn(lat!=null?{latlng:{lat:lat,lng:lng}}:{});};if(!this._ls[ev])this._ls[ev]=[];this._ls[ev].push({fn:fn,w:w});kakao.maps.event.addListener(this._m,ev,w);return this;},
         off:function(ev,fn){this._rm(ev,fn);return this;},
         _rm:function(ev,fn){if(!this._ls[ev])return;var i=this._ls[ev].findIndex(function(l){return l.fn===fn;});if(i!==-1){kakao.maps.event.removeListener(this._m,ev,this._ls[ev][i].w);this._ls[ev].splice(i,1);}},
         removeLayer:function(l){if(l&&typeof l.setMap==='function')l.setMap(null);return this;},
@@ -72,6 +72,7 @@
             this._line=new kakao.maps.Polyline({map:mw._m,path:path,strokeColor:this._s.color||'#F00',strokeWeight:this._s.weight||3,strokeOpacity:this._s.opacity!=null?this._s.opacity:0.8,strokeStyle:this._s.dashArray?'shortdash':'solid'});
             var last=0;
             kakao.maps.event.addListener(this._line,'click',function(me){
+                if(!me||!me.latLng)return; // 카카오 내부 이벤트 null 방어
                 var ev={latlng:{lat:me.latLng.getLat(),lng:me.latLng.getLng()},originalEvent:me},now=Date.now();
                 if(self._ls.click)self._ls.click.forEach(function(f){f(ev);});
                 if(now-last<400&&self._ls.dblclick)self._ls.dblclick.forEach(function(f){f(ev);});

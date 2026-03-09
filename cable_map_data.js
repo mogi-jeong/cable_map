@@ -231,6 +231,79 @@
 
         window.loadPolesFromIDB  = loadPolesFromIDB;
         window.loadPolesInBounds = loadPolesInBounds;
+
+        // GitHub Pages 자동 전주 로드
+        // progressCb(phase, cur, tot) — phase: 'fetch' | 'import' | 'done'
+        window.autoLoadPolesIfNeeded = async function(progressCb) {
+            // 1. 버전 파일 확인 (파일 없거나 로컬 file:// 환경이면 스킵)
+            let remoteVersion;
+            try {
+                const r = await fetch('./poles_version.json?_=' + Date.now());
+                if (!r.ok) return false;
+                remoteVersion = (await r.json()).v;
+            } catch(e) { return false; }
+
+            const localVersion = localStorage.getItem('polesAutoVersion');
+            const db = await getDB();
+
+            // IDB 전주 수 확인
+            const poleCount = await new Promise(function(resolve) {
+                const req = db.transaction('poles','readonly').objectStore('poles').count();
+                req.onsuccess = function() { resolve(req.result); };
+                req.onerror   = function() { resolve(0); };
+            });
+
+            // 버전 같고 데이터 있으면 스킵
+            if (remoteVersion === localVersion && poleCount > 0) return false;
+
+            // 2. JSON 다운로드
+            if (progressCb) progressCb('fetch', 0, 0);
+            let data;
+            try {
+                const resp = await fetch('./poles_output_poll.json?_=' + Date.now());
+                if (!resp.ok) return false;
+                data = await resp.json();
+            } catch(e) { return false; }
+
+            if (!data.nodes || !Array.isArray(data.nodes)) return false;
+
+            // 3. IDB 초기화 후 임포트
+            await idbClear(db);
+
+            const src   = data.nodes.filter(function(n) {
+                return n.name && n.name.indexOf('추출장비') !== 0;
+            });
+            const now   = Date.now();
+            const BATCH = 5000;
+
+            for (let i = 0; i < src.length; i += BATCH) {
+                const batch = [];
+                const end   = Math.min(i + BATCH, src.length);
+                for (let j = i; j < end; j++) {
+                    const n       = src[j];
+                    const poleNum = (n.memo || '').replace('전산화번호: ', '').trim();
+                    const region  = n.id ? (n.id.split('_')[1] || '') : '';
+                    const off     = window.getPoleRegionOffset && region
+                                    ? window.getPoleRegionOffset(region) : null;
+                    batch.push({
+                        id:     'poll_' + now + '_' + j,
+                        type:   'pole_existing',
+                        lat:    n.lat + (off ? off.dLat : 0),
+                        lng:    n.lng + (off ? off.dLng : 0),
+                        name:   n.name  || '',
+                        memo:   poleNum ? '전산화번호: ' + poleNum : '',
+                        region: region
+                    });
+                }
+                await idbPutMany(db, batch);
+                if (progressCb) progressCb('import', end, src.length);
+                await new Promise(function(r) { setTimeout(r, 0); });
+            }
+
+            localStorage.setItem('polesAutoVersion', remoteVersion);
+            if (progressCb) progressCb('done', src.length, src.length);
+            return true;
+        };
         window.clearPoleStore    = async function() {
             const db = await getDB();
             await idbClear(db);
@@ -239,6 +312,31 @@
         window.idbWritePolesBatch = async function(poleNodes) {
             const db = await getDB();
             await idbPutMany(db, poleNodes);
+        };
+
+        // 전체 IDB 전주에 오프셋 적용 — getOffset(node) → {dLat,dLng} 또는 null
+        window.applyOffsetToAllPoles = async function(getOffset, progressCb) {
+            const db  = await getDB();
+            const all = await idbGetAll(db);
+            const BATCH = 3000;
+            for (let s = 0; s < all.length; s += BATCH) {
+                const batch = all.slice(s, s + BATCH);
+                const tx    = db.transaction('poles', 'readwrite');
+                const store = tx.objectStore('poles');
+                batch.forEach(function(n) {
+                    const off = getOffset(n);
+                    if (!off || (!off.dLat && !off.dLng)) return;
+                    n.lat = Math.round((n.lat + off.dLat) * 1e7) / 1e7;
+                    n.lng = Math.round((n.lng + off.dLng) * 1e7) / 1e7;
+                    store.put(n);
+                });
+                await new Promise(function(resolve, reject) {
+                    tx.oncomplete = resolve;
+                    tx.onerror    = function() { reject(tx.error); };
+                });
+                if (progressCb) progressCb(Math.min(s + BATCH, all.length), all.length);
+                await new Promise(function(r) { setTimeout(r, 0); });
+            }
         };
 
         // 지도 초기화
