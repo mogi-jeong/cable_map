@@ -134,6 +134,10 @@
         #poleSearchResults .sr-item .sr-name { font-weight: 600; color: #1a6fd4; }
         #poleSearchResults .sr-item .sr-memo { color: #888; font-size: 12px; }
         #poleSearchResults .sr-empty { padding: 14px; text-align: center; color: #999; font-size: 13px; }
+        #poleSearchResults .sr-group-label {
+            padding: 5px 14px 3px; font-size: 11px; font-weight: 700;
+            color: #888; background: #f7f8fa; letter-spacing: .5px;
+        }
 
         /* 취소 버튼 */
         .tb-cancel {
@@ -964,7 +968,7 @@
         <div style="position:relative;margin-left:6px;">
             <div class="pole-search-wrap">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#aaa" stroke-width="2.2" stroke-linecap="round"><circle cx="10" cy="10" r="7"/><line x1="15.5" y1="15.5" x2="21" y2="21"/></svg>
-                <input id="poleSearchInput" type="text" placeholder="전주번호 / 전산화번호"
+                <input id="poleSearchInput" type="text" placeholder="전주번호 · 전산화번호 · 주소"
                     oninput="onPoleSearchInput(this.value)"
                     onkeydown="if(event.key==='Enter')onPoleSearchEnter()"
                     onfocus="if(this.value.trim().length>=1)showPoleSearchResults()"
@@ -1265,7 +1269,7 @@
     </div>
     
     <!-- 카카오맵 SDK -->
-    <script type="text/javascript" src="//dapi.kakao.com/v2/maps/sdk.js?appkey=4f478e9f00aaf4d8b3432db26f3d1aa2&autoload=false"></script>
+    <script type="text/javascript" src="//dapi.kakao.com/v2/maps/sdk.js?appkey=4f478e9f00aaf4d8b3432db26f3d1aa2&autoload=false&libraries=services"></script>
     <!-- SheetJS (Excel 출력) -->
     <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 

@@ -1814,7 +1814,8 @@
 // ==================== 전주 검색 ====================
 (function() {
     var _searchTimer = null;
-    var _lastResults = [];
+    var _lastPoleResults = [];
+    var _lastAddrResults = [];
 
     // IDB에서 전주 검색 (이름 or 전산화번호)
     async function searchPoles(query) {
@@ -1847,75 +1848,133 @@
         });
     }
 
-    function renderResults(results) {
+    // 결과 렌더링 — type: 'pole' | 'address'
+    function renderResults(poleResults, addrResults) {
         var box = document.getElementById('poleSearchResults');
         if (!box) return;
-        if (results.length === 0) {
-            box.innerHTML = '<div class="sr-empty">검색 결과 없음</div>';
-        } else {
-            box.innerHTML = results.map(function(n, i) {
+        var html = '';
+
+        if (poleResults && poleResults.length > 0) {
+            html += '<div class="sr-group-label">전주</div>';
+            html += poleResults.map(function(n, i) {
                 var poleNum = (n.memo || '').replace('전산화번호: ', '').trim();
-                return '<div class="sr-item" onmousedown="onPoleSearchSelect(' + i + ')">' +
+                return '<div class="sr-item" onmousedown="onPoleSearchSelect(\'pole\',' + i + ')">' +
                     '<span class="sr-name">' + escapeHtml(n.name || '') + '</span>' +
                     (poleNum ? '<span class="sr-memo">전산화번호: ' + escapeHtml(poleNum) + '</span>' : '') +
                     '</div>';
             }).join('');
         }
+
+        if (addrResults && addrResults.length > 0) {
+            html += '<div class="sr-group-label">주소</div>';
+            html += addrResults.map(function(a, i) {
+                return '<div class="sr-item" onmousedown="onPoleSearchSelect(\'addr\',' + i + ')">' +
+                    '<span class="sr-name">' + escapeHtml(a.place_name || a.address_name || '') + '</span>' +
+                    '<span class="sr-memo">' + escapeHtml(a.address_name || a.road_address_name || '') + '</span>' +
+                    '</div>';
+            }).join('');
+        }
+
+        if (!html) html = '<div class="sr-empty">검색 결과 없음</div>';
+        box.innerHTML = html;
         box.style.display = 'block';
-        _lastResults = results;
+        _lastPoleResults = poleResults || [];
+        _lastAddrResults = addrResults || [];
     }
 
     window.showPoleSearchResults = function() {
         var box = document.getElementById('poleSearchResults');
-        if (box && _lastResults.length > 0) box.style.display = 'block';
+        if (box && (_lastPoleResults.length > 0 || _lastAddrResults.length > 0)) box.style.display = 'block';
     };
     window.hidePoleSearchResults = function() {
         var box = document.getElementById('poleSearchResults');
         if (box) box.style.display = 'none';
     };
 
+    // 카카오 Places/Geocoder 주소 검색
+    function searchAddress(query, cb) {
+        if (!kakao || !kakao.maps || !kakao.maps.services) { cb([]); return; }
+        var ps = new kakao.maps.services.Places();
+        ps.keywordSearch(query, function(data, status) {
+            if (status === kakao.maps.services.Status.OK) cb(data);
+            else {
+                // Places 실패 → Geocoder fallback
+                var gc = new kakao.maps.services.Geocoder();
+                gc.addressSearch(query, function(data2, status2) {
+                    cb(status2 === kakao.maps.services.Status.OK ? data2 : []);
+                });
+            }
+        });
+    }
+
     window.onPoleSearchInput = function(val) {
         if (_searchTimer) clearTimeout(_searchTimer);
         val = val.trim();
         if (val.length < 1) { window.hidePoleSearchResults(); return; }
         _searchTimer = setTimeout(async function() {
-            var results = await searchPoles(val);
-            renderResults(results);
-        }, 250);
+            var poleResults = await searchPoles(val);
+            if (poleResults.length > 0) {
+                renderResults(poleResults, []);
+            } else {
+                searchAddress(val, function(addrResults) {
+                    renderResults([], addrResults.slice(0, 10));
+                });
+            }
+        }, 300);
     };
 
     window.onPoleSearchEnter = async function() {
         var val = (document.getElementById('poleSearchInput') || {}).value || '';
         val = val.trim();
         if (!val) return;
-        var results = await searchPoles(val);
-        if (results.length === 0) {
-            renderResults([]);
-        } else if (results.length === 1) {
-            window.onPoleSearchSelect(0);
-        } else {
-            renderResults(results);
+        var poleResults = await searchPoles(val);
+        if (poleResults.length === 1) {
+            window.onPoleSearchSelect('pole', 0);
+            return;
         }
+        if (poleResults.length > 1) {
+            renderResults(poleResults, []);
+            return;
+        }
+        // 전주 없으면 주소 검색
+        searchAddress(val, function(addrResults) {
+            addrResults = addrResults.slice(0, 10);
+            if (addrResults.length === 1) {
+                _lastAddrResults = addrResults;
+                window.onPoleSearchSelect('addr', 0);
+            } else {
+                renderResults([], addrResults);
+            }
+        });
     };
 
-    window.onPoleSearchSelect = function(idx) {
-        var n = _lastResults[idx];
-        if (!n || !map) return;
+    window.onPoleSearchSelect = function(type, idx) {
         window.hidePoleSearchResults();
-        // 카카오 레벨 2 (zoom ~16) 로 이동
-        map._m.setCenter(new kakao.maps.LatLng(n.lat, n.lng));
-        map._m.setLevel(2);
-        if (typeof refreshPoles === 'function') refreshPoles();
-        // 잠시 후 해당 전주 하이라이트
-        setTimeout(function() {
-            if (typeof drawPoleCanvas === 'function') {
-                window._poleSearchHighlight = n.id;
-                drawPoleCanvas();
-                setTimeout(function() {
-                    window._poleSearchHighlight = null;
+        if (type === 'pole') {
+            var n = _lastPoleResults[idx];
+            if (!n || !map) return;
+            map._m.setCenter(new kakao.maps.LatLng(n.lat, n.lng));
+            map._m.setLevel(2);
+            if (typeof refreshPoles === 'function') refreshPoles();
+            setTimeout(function() {
+                if (typeof drawPoleCanvas === 'function') {
+                    window._poleSearchHighlight = n.id;
                     drawPoleCanvas();
-                }, 3000);
-            }
-        }, 300);
+                    setTimeout(function() {
+                        window._poleSearchHighlight = null;
+                        drawPoleCanvas();
+                    }, 3000);
+                }
+            }, 300);
+        } else {
+            var a = _lastAddrResults[idx];
+            if (!a || !map) return;
+            var lat = parseFloat(a.y || (a.address && a.address.y));
+            var lng = parseFloat(a.x || (a.address && a.address.x));
+            if (isNaN(lat) || isNaN(lng)) return;
+            map._m.setCenter(new kakao.maps.LatLng(lat, lng));
+            map._m.setLevel(3);
+            if (typeof refreshPoles === 'function') refreshPoles();
+        }
     };
 })();
