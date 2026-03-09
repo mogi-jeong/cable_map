@@ -968,7 +968,9 @@
             const labelAngle  = node.labelAngle  != null ? node.labelAngle  : 0;
             const labelOffset = node.labelOffset != null ? node.labelOffset : 20;
 
-            document.getElementById('menuModalTitle').innerHTML = `전주 정보`;
+            document.getElementById('menuModalTitle').innerHTML =
+                `전주 정보 <button onclick="startSinglePoleMoveMode('${node.id}')" title="전주 이동"
+                    style="margin-left:8px;padding:3px 10px;background:#2980b9;color:white;border:none;border-radius:5px;font-size:12px;cursor:pointer;font-weight:normal;vertical-align:middle;">이동</button>`;
 
             // 전주 모달은 폼 형태 → grid 해제
             const menuButtons = document.getElementById('menuButtons');
@@ -1712,6 +1714,16 @@
             if (_poleMoveKeyHandler) document.removeEventListener('keydown', _poleMoveKeyHandler);
             _poleMoveMouseMove = _poleMoveClick = _poleMoveKeyHandler = null;
         }
+
+        // 단일 전주 이동 — 모달의 이동 버튼에서 호출
+        window.startSinglePoleMoveMode = function(nodeId) {
+            var node = nodes.find(function(n) { return n.id === nodeId; });
+            if (!node) return;
+            document.getElementById('menuModal').classList.remove('active');
+            _poleSelectedNodes = [node];
+            drawPoleCanvas();
+            window.startPoleMoveMode();
+        };
 
         window.resetPoleLabel           = resetPoleLabel;
         window.setJunctionType          = setJunctionType;
