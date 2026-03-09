@@ -232,16 +232,20 @@
         window.loadPolesFromIDB  = loadPolesFromIDB;
         window.loadPolesInBounds = loadPolesInBounds;
 
-        // GitHub Pages 자동 전주 로드
+        // GitHub Pages 자동 전주 로드 (구역별 분할 파일)
         // progressCb(phase, cur, tot) — phase: 'fetch' | 'import' | 'done'
         window.autoLoadPolesIfNeeded = async function(progressCb) {
-            // 1. 버전 파일 확인 (파일 없거나 로컬 file:// 환경이면 스킵)
-            let remoteVersion;
+            // 1. 인덱스 파일 확인 (없거나 로컬 file:// 환경이면 스킵)
+            let index;
             try {
-                const r = await fetch('./poles_version.json?_=' + Date.now());
+                const r = await fetch('./poles_index.json?_=' + Date.now());
                 if (!r.ok) return false;
-                remoteVersion = (await r.json()).v;
+                index = await r.json();
             } catch(e) { return false; }
+
+            const remoteVersion = index.v;
+            const files = index.files;
+            if (!remoteVersion || !Array.isArray(files) || files.length === 0) return false;
 
             const localVersion = localStorage.getItem('polesAutoVersion');
             const db = await getDB();
@@ -256,52 +260,58 @@
             // 버전 같고 데이터 있으면 스킵
             if (remoteVersion === localVersion && poleCount > 0) return false;
 
-            // 2. JSON 다운로드
-            if (progressCb) progressCb('fetch', 0, 0);
-            let data;
-            try {
-                const resp = await fetch('./poles_output_poll.json?_=' + Date.now());
-                if (!resp.ok) return false;
-                data = await resp.json();
-            } catch(e) { return false; }
-
-            if (!data.nodes || !Array.isArray(data.nodes)) return false;
-
-            // 3. IDB 초기화 후 임포트
+            // 2. IDB 초기화
             await idbClear(db);
 
-            const src   = data.nodes.filter(function(n) {
-                return n.name && n.name.indexOf('추출장비') !== 0;
-            });
-            const now   = Date.now();
-            const BATCH = 5000;
+            // 3. 구역 파일 순차 다운로드 + 임포트
+            const now = Date.now();
+            let totalImported = 0;
+            let globalIdx = 0;
 
-            for (let i = 0; i < src.length; i += BATCH) {
-                const batch = [];
-                const end   = Math.min(i + BATCH, src.length);
-                for (let j = i; j < end; j++) {
-                    const n       = src[j];
-                    const poleNum = (n.memo || '').replace('전산화번호: ', '').trim();
-                    const region  = n.id ? (n.id.split('_')[1] || '') : '';
-                    const off     = window.getPoleRegionOffset && region
-                                    ? window.getPoleRegionOffset(region) : null;
-                    batch.push({
-                        id:     'poll_' + now + '_' + j,
-                        type:   'pole_existing',
-                        lat:    n.lat + (off ? off.dLat : 0),
-                        lng:    n.lng + (off ? off.dLng : 0),
-                        name:   n.name  || '',
-                        memo:   poleNum ? '전산화번호: ' + poleNum : '',
-                        region: region
-                    });
+            for (let fi = 0; fi < files.length; fi++) {
+                if (progressCb) progressCb('fetch', fi, files.length);
+                let data;
+                try {
+                    const resp = await fetch('./' + files[fi] + '?_=' + Date.now());
+                    if (!resp.ok) continue;
+                    data = await resp.json();
+                } catch(e) { continue; }
+
+                if (!data.nodes || !Array.isArray(data.nodes)) continue;
+
+                const src   = data.nodes.filter(function(n) {
+                    return n.name && n.name.indexOf('추출장비') !== 0;
+                });
+                const BATCH = 5000;
+
+                for (let i = 0; i < src.length; i += BATCH) {
+                    const batch = [];
+                    const end   = Math.min(i + BATCH, src.length);
+                    for (let j = i; j < end; j++) {
+                        const n       = src[j];
+                        const poleNum = (n.memo || '').replace('전산화번호: ', '').trim();
+                        const region  = n.id ? (n.id.split('_')[1] || '') : '';
+                        const off     = window.getPoleRegionOffset && region
+                                        ? window.getPoleRegionOffset(region) : null;
+                        batch.push({
+                            id:     'poll_' + now + '_' + (globalIdx++),
+                            type:   'pole_existing',
+                            lat:    n.lat + (off ? off.dLat : 0),
+                            lng:    n.lng + (off ? off.dLng : 0),
+                            name:   n.name  || '',
+                            memo:   poleNum ? '전산화번호: ' + poleNum : '',
+                            region: region
+                        });
+                    }
+                    await idbPutMany(db, batch);
+                    totalImported += batch.length;
+                    if (progressCb) progressCb('import', totalImported, 282461);
+                    await new Promise(function(r) { setTimeout(r, 0); });
                 }
-                await idbPutMany(db, batch);
-                if (progressCb) progressCb('import', end, src.length);
-                await new Promise(function(r) { setTimeout(r, 0); });
             }
 
             localStorage.setItem('polesAutoVersion', remoteVersion);
-            if (progressCb) progressCb('done', src.length, src.length);
+            if (progressCb) progressCb('done', totalImported, totalImported);
             return true;
         };
         window.clearPoleStore    = async function() {
