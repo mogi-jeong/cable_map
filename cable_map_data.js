@@ -118,6 +118,17 @@
             });
         }
 
+        // clear 없이 put만 — 뷰포트 분할 로드 시 나머지 IDB 전주 보존
+        function idbPutMany(db, poleNodes) {
+            return new Promise(function(resolve, reject) {
+                const tx    = db.transaction('poles', 'readwrite');
+                const store = tx.objectStore('poles');
+                poleNodes.forEach(function(n) { store.put(n); });
+                tx.oncomplete = resolve;
+                tx.onerror    = function() { reject(tx.error); };
+            });
+        }
+
         function idbClear(db) {
             return new Promise(function(resolve, reject) {
                 const req = db.transaction('poles', 'readwrite').objectStore('poles').clear();
@@ -171,7 +182,7 @@
             }
         }
 
-        // 뷰포트 범위 내 전주만 IDB에서 로드 (lat 인덱스 활용)
+        // 뷰포트 범위 내 전주만 IDB에서 로드 — 결과 배열만 반환 (nodes 수정은 호출측에서)
         async function loadPolesInBounds(bounds) {
             const db = await getDB();
             const { minLat, maxLat, minLng, maxLng } = bounds;
@@ -187,10 +198,7 @@
                         if (n.lng >= minLng && n.lng <= maxLng) result.push(n);
                         cursor.continue();
                     } else {
-                        // 기존 전주 제거 후 뷰포트 내 전주로 교체
-                        nodes = nodes.filter(function(n) { return !isPoleType(n.type); });
-                        nodes = nodes.concat(result);
-                        resolve(result.length);
+                        resolve(result);
                     }
                 };
                 tx.onerror = function() { reject(tx.error); };
@@ -214,12 +222,23 @@
             localStorage.setItem('fiberNodes',       JSON.stringify(otherNodes));
             localStorage.setItem('fiberConnections', JSON.stringify(connections));
 
-            // 전주 → IndexedDB (비동기)
+            // 전주 → IndexedDB (put만, clear 없음 — 뷰포트 분할 로드 시 나머지 전주 보존)
+            // nodes에 전주가 없을 때(임포트 직후 등)는 IDB 트랜잭션 생략
+            if (poleNodes.length === 0) return;
             const db = await getDB();
-            await idbReplaceAll(db, poleNodes);
+            await idbPutMany(db, poleNodes);
         }
 
-        window.loadPolesFromIDB = loadPolesFromIDB;
+        window.loadPolesFromIDB  = loadPolesFromIDB;
         window.loadPolesInBounds = loadPolesInBounds;
+        window.clearPoleStore    = async function() {
+            const db = await getDB();
+            await idbClear(db);
+        };
+        // 임포트 전용: nodes[]를 거치지 않고 IDB에 직접 배치 쓰기
+        window.idbWritePolesBatch = async function(poleNodes) {
+            const db = await getDB();
+            await idbPutMany(db, poleNodes);
+        };
 
         // 지도 초기화

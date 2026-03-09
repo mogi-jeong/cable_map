@@ -60,26 +60,57 @@
                 // 1단계: 전주 제외하고 빠르게 로드 (localStorage만)
                 await loadData({ polesLater: true });
 
-                // 지도 이동/줌 시 위치 저장 + 팝업 닫기 + 뷰포트 전주 로딩
+                // 뷰포트 전주 로딩 — 시퀀스 번호로 오래된 쿼리 결과 폐기
+                var _refreshSeq = 0;
+                var _refreshTimer = null;
+                function scheduleRefreshPoles() {
+                    if (_refreshTimer) clearTimeout(_refreshTimer);
+                    _refreshTimer = setTimeout(function() {
+                        _refreshTimer = null;
+                        refreshPoles();
+                    }, 80);
+                }
                 function refreshPoles() {
                     if (!map || !map._m) return;
                     const z = map.getZoom();
-                    if (z < 14) { drawPoleCanvas(); return; } // 줌 작으면 전주 숨김
+                    if (z < 14) { drawPoleCanvas(); return; }
                     const b = map._m.getBounds();
                     const sw = b.getSouthWest(), ne = b.getNorthEast();
-                    // 여유 20% 확장
                     const dLat = (ne.getLat() - sw.getLat()) * 0.2;
                     const dLng = (ne.getLng() - sw.getLng()) * 0.2;
+                    const mySeq = ++_refreshSeq;
                     loadPolesInBounds({
                         minLat: sw.getLat() - dLat, maxLat: ne.getLat() + dLat,
                         minLng: sw.getLng() - dLng, maxLng: ne.getLng() + dLng
-                    }).then(function(cnt) {
+                    }).then(function(result) {
+                        if (mySeq !== _refreshSeq) return; // 더 최신 쿼리가 있으면 폐기
+                        nodes = nodes.filter(function(n) { return !isPoleType(n.type); });
+                        nodes = nodes.concat(result);
                         drawPoleCanvas();
                     });
                 }
 
-                map.on('zoomend', function() { refreshPoles(); });
-                // zoom_changed는 shim moveend에서 처리
+                // 드래그 중 캔버스 실시간 재그리기 (rAF throttle)
+                var _rafPending = false;
+                function _rafDraw() {
+                    if (_rafPending) return;
+                    _rafPending = true;
+                    requestAnimationFrame(function() {
+                        _rafPending = false;
+                        drawPoleCanvas();
+                    });
+                }
+                map.on('move', _rafDraw);
+
+                // 줌 애니메이션 동안 canvas 재그리기 (300ms 동안 타이머 분산)
+                map.on('zoomend', function() {
+                    [50, 100, 150, 200, 250, 300].forEach(function(t) {
+                        setTimeout(drawPoleCanvas, t);
+                    });
+                    scheduleRefreshPoles();
+                });
+
+                // moveend: 위치 저장 + pole 재로드 (디바운스)
                 map.on('moveend', function() {
                     if (!map || !map._m) return;
                     const c = map._m.getCenter();
@@ -87,7 +118,7 @@
                     const z = map.getZoom();
                     localStorage.setItem('mapView', JSON.stringify({lat:c.getLat(), lng:c.getLng(), zoom:z}));
                     map.closePopup();
-                    refreshPoles();
+                    scheduleRefreshPoles();
                 });
 
                 // 함체/연결 즉시 표시
@@ -617,7 +648,7 @@
                 var mx = e.clientX - rect.left;
                 var my = e.clientY - rect.top;
                 var zoom = map.getZoom();
-                if (zoom < 14) return;
+                if (zoom < 13) return;
                 var hit = null, bestDist = 12; // 클릭 반경 12px
                 nodes.forEach(function(node) {
                     if (!isPoleType(node.type)) return;
@@ -914,6 +945,20 @@
             previewPoleLabel(nodeId, 0, 20);
         }
 
+        // 전주 전체 삭제
+        async function deleteAllPoles() {
+            var poleCount = nodes.filter(function(n) { return isPoleType(n.type); }).length;
+            if (poleCount === 0) { alert('삭제할 전주가 없습니다.'); return; }
+            if (!confirm('전주 ' + poleCount.toLocaleString() + '개를 모두 삭제합니다.\n\n⚠️ 이 작업은 되돌릴 수 없습니다. 계속하시겠습니까?')) return;
+            nodes = nodes.filter(function(n) { return !isPoleType(n.type); });
+            // IndexedDB poles 스토어도 완전히 비움 (idbPutMany는 clear 없이 put만 하므로 별도 clear 필요)
+            await clearPoleStore();
+            await saveData();
+            drawPoleCanvas();
+            showStatus('전주 ' + poleCount.toLocaleString() + '개 삭제 완료');
+        }
+        window.deleteAllPoles = deleteAllPoles;
+
         function deletePole(nodeId) {
             if(!confirm('전주를 삭제할까요?')) return;
             const idx = nodes.findIndex(n=>n.id===nodeId);
@@ -1133,6 +1178,19 @@
         }
 
         // ==================== 전주 임포트 (js_poll.json) ====================
+        function showImportProgress(current, total) {
+            const overlay = document.getElementById('importProgressOverlay');
+            const fill    = document.getElementById('importProgressFill');
+            const label   = document.getElementById('importProgressLabel');
+            const pct = total > 0 ? Math.round(current / total * 100) : 0;
+            overlay.classList.add('active');
+            fill.style.width = pct + '%';
+            label.textContent = current.toLocaleString() + ' / ' + total.toLocaleString() + '  (' + pct + '%)';
+        }
+        function hideImportProgress() {
+            document.getElementById('importProgressOverlay').classList.remove('active');
+        }
+
         function importPollData(event) {
             const file = event.target.files[0];
             if (!file) return;
@@ -1155,59 +1213,64 @@
                         return;
                     }
 
-                    // 기존 전주 전산화번호 목록 (중복 방지)
+                    // 현재 뷰포트에 로드된 전주 중복 방지 (임포트 내 자체 중복도 방지)
                     const existingMemos = new Set(
-                        nodes.filter(function(n) { return isPoleType(n.type); })
+                        nodes.filter(function(n) {
+                            return isPoleType(n.type) || (n.memo && n.memo.indexOf('전산화번호:') !== -1);
+                        })
                              .map(function(n) { return (n.memo || '').replace('전산화번호: ', '').trim(); })
                              .filter(Boolean)
                     );
 
                     const now = Date.now();
-                    const newPoleNodes = [];
                     let addCount = 0, skipCount = 0;
-                    const BATCH = 200;
+                    const BATCH = 5000; // 200→5000: setTimeout 횟수 25배 감소
 
-                    // 배치 처리 (UI 프리즈 방지)
+                    document.getElementById('importProgressTitle').textContent = '전주 임포트 중...';
+                    showImportProgress(0, pollNodes.length);
+
+                    // 배치마다 IDB에 직접 쓰기 — nodes[]에 쌓지 않음
                     for (let i = 0; i < pollNodes.length; i += BATCH) {
-                        const batch = pollNodes.slice(i, i + BATCH);
-                        batch.forEach(function(n, j) {
+                        const idbBatch = [];
+                        const end = Math.min(i + BATCH, pollNodes.length);
+                        for (let j = i; j < end; j++) {
+                            const n = pollNodes[j];
                             const poleNum = (n.memo || '').replace('전산화번호: ', '').trim();
                             if (poleNum && existingMemos.has(poleNum)) {
                                 skipCount++;
-                                return;
+                                continue;
                             }
-                            const newNode = {
-                                id: 'poll_' + now + '_' + (i + j),
+                            idbBatch.push({
+                                id:   'poll_' + now + '_' + j,
                                 type: 'pole_existing',
-                                lat: n.lat,
-                                lng: n.lng,
+                                lat:  n.lat,
+                                lng:  n.lng,
                                 name: n.name || '',
-                                memo: poleNum ? '전산화번호: ' + poleNum : '',
-                                fiberType: '',
-                                ofds: [],
-                                ports: [],
-                                rns: [],
-                                inOrder: [],
-                                connDirections: {}
-                            };
-                            nodes.push(newNode);
-                            newPoleNodes.push(newNode);
+                                memo: poleNum ? '전산화번호: ' + poleNum : ''
+                            });
                             if (poleNum) existingMemos.add(poleNum);
                             addCount++;
-                        });
+                        }
 
-                        // 진행 상황 표시 + UI 숨 쉬기
-                        showStatus('전주 임포트 중... ' + Math.min(i + BATCH, pollNodes.length) + ' / ' + pollNodes.length);
+                        // IDB 직접 쓰기 (nodes[] 경유 없음 → 마지막 bulk put 제거)
+                        if (idbBatch.length > 0) await idbWritePolesBatch(idbBatch);
+
+                        showImportProgress(end, pollNodes.length);
                         await new Promise(function(r) { setTimeout(r, 0); });
                     }
 
-                    // 저장 (renderNode 없이 — 전주는 Canvas로 일괄 렌더링)
+                    // localStorage 저장 (비전주 노드 + connections만, 전주는 위에서 IDB 직접 저장)
+                    document.getElementById('importProgressTitle').textContent = '저장 중...';
                     await saveData();
-                    drawPoleCanvas();
+
+                    // 뷰포트 전주 로드 후 캔버스 렌더링
+                    refreshPoles();
+                    hideImportProgress();
                     showStatus('전주 임포트 완료: ' + addCount + '개 추가, ' + skipCount + '개 중복 건너뜀');
                     alert('전주 임포트 완료\n추가: ' + addCount + '개\n중복 건너뜀: ' + skipCount + '개');
 
                 } catch(err) {
+                    hideImportProgress();
                     alert('파일 읽기 오류: ' + err.message);
                 }
                 event.target.value = '';

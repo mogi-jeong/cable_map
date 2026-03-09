@@ -370,27 +370,72 @@
             showStatus('전주 스냅: '+node.name+' | 경유점 '+pendingWaypoints.length+'개');
         }
 
+        const JUNCTION_SNAP_RADIUS_M = 15;
+
+        function findNearestJunction(lat, lng) {
+            let best = null, bestDist = Infinity;
+            nodes.forEach(function(n) {
+                if (n.id === connectingFromNode.id) return;
+                if (n.type !== 'junction' && n.type !== 'datacenter' && n.type !== 'onu' && n.type !== 'subscriber' && n.type !== 'cctv') return;
+                const d = distanceM(lat, lng, n.lat, n.lng);
+                if (d <= JUNCTION_SNAP_RADIUS_M && d < bestDist) { bestDist = d; best = n; }
+            });
+            return best;
+        }
+
         let _lastWaypointClick = 0;
         function onMapClickForWaypoint(e) {
             if (!connectingMode || !connectingFromNode) return;
             if (window._nodeJustClicked) return;
             const _now = Date.now();
-            if (_now - _lastWaypointClick < 300) return; // 더블클릭 방지
+            if (_now - _lastWaypointClick < 300) return;
             _lastWaypointClick = _now;
-            let lat=e.latlng.lat, lng=e.latlng.lng;
-            const nearPole = findNearestPole(lat,lng);
-            if (nearPole) { lat=nearPole.lat; lng=nearPole.lng; }
-            pendingWaypoints.push({ lat, lng, snappedPole:nearPole?nearPole.id:null });
-            const marker = L.circleMarker([lat,lng], {
-                radius:nearPole?5:3,
-                fillColor:nearPole?'#00cc44':'#e67e22',
-                color:'#fff', weight:2, fillOpacity:1, zIndexOffset:2000
+            let lat = e.latlng.lat, lng = e.latlng.lng;
+
+            // 근처 함체/장비 감지 → 연결 여부 팝업
+            const nearJunction = findNearestJunction(lat, lng);
+            if (nearJunction) {
+                const jName = nearJunction.name || '이름없음';
+                const jTypeLabel = nearJunction.type === 'junction' ? '[함체]'
+                    : nearJunction.type === 'datacenter' ? '[국사]'
+                    : nearJunction.type === 'onu'        ? '[ONU]'
+                    : nearJunction.type === 'subscriber' ? '[가입자]'
+                    : nearJunction.type === 'cctv'       ? '[CCTV]'
+                    : '';
+                showConfirm(
+                    `${jTypeLabel} '${jName}'에 연결하시겠습니까?`,
+                    function() {
+                        connectingToNode = nearJunction;
+                        if (pendingWaypoints.length > 0) {
+                            const last = pendingWaypoints[pendingWaypoints.length - 1];
+                            if (Math.abs(last.lat - nearJunction.lat) < 0.0005 &&
+                                Math.abs(last.lng - nearJunction.lng) < 0.0005) {
+                                pendingWaypoints.pop();
+                            }
+                        }
+                        clearPreviewOnly();
+                        showConnectionModal();
+                    },
+                    '근처에 ' + jName + ' 장비가 있습니다',
+                    '연결'
+                );
+                return;
+            }
+
+            // 함체 없으면 기존 전주 스냅 로직
+            const nearPole = findNearestPole(lat, lng);
+            if (nearPole) { lat = nearPole.lat; lng = nearPole.lng; }
+            pendingWaypoints.push({ lat, lng, snappedPole: nearPole ? nearPole.id : null });
+            const marker = L.circleMarker([lat, lng], {
+                radius: nearPole ? 5 : 3,
+                fillColor: nearPole ? '#00cc44' : '#e67e22',
+                color: '#fff', weight: 2, fillOpacity: 1, zIndexOffset: 2000
             }).addTo(map);
             waypointMarkers.push(marker);
             updatePreviewLine();
             showStatus(nearPole
-                ? '전주 스냅: '+nearPole.name+' | 경유점 '+pendingWaypoints.length+'개'
-                : '경유점 '+pendingWaypoints.length+'개. 도착 장비를 클릭하세요 (ESC=취소)');
+                ? '전주 스냅: ' + nearPole.name + ' | 경유점 ' + pendingWaypoints.length + '개'
+                : '경유점 ' + pendingWaypoints.length + '개. 도착 장비를 클릭하세요 (ESC=취소)');
         }
 
         function updatePreviewLine() {
@@ -828,6 +873,10 @@
                         style="width:100%; padding:8px; margin-bottom:5px; background:#3498db; color:white; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">
                         🔢 코어 수 변경
                     </button>
+                    <button onclick="exportPoleData('${connId}'); map.closePopup()"
+                        style="width:100%; padding:8px; margin-bottom:5px; background:#9b59b6; color:white; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">
+                        📊 전주 데이터 추출
+                    </button>
                     <button onclick="deleteConnection('${connId}'); map.closePopup()"
                         style="width:100%; padding:8px; background:#e74c3c; color:white; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">
                         🗑️ 케이블 삭제
@@ -1162,6 +1211,56 @@
         }
         
         // OFD 목록 렌더링
+        // 전주 데이터 Excel 추출
+        function exportPoleData(connId) {
+            const conn = connections.find(c => c.id === connId);
+            if (!conn) return;
+
+            const fromNode = nodes.find(n => n.id === connFrom(conn));
+            const toNode   = nodes.find(n => n.id === connTo(conn));
+
+            const rows = [];
+            (conn.waypoints || []).forEach(function(wp) {
+                if (!wp.snappedPole) return;
+                const node = nodes.find(n => n.id === wp.snappedPole);
+                if (!node) return;
+
+                // 전산화번호 파싱 → 관리구(앞5자리) / 번호(뒤3자리)
+                // 예: "8517X622" → 관리구 "8517X", 번호 "622"
+                const rawNum = (node.memo || '')
+                    .replace('자가주:true', '')
+                    .replace('전산화번호: ', '')
+                    .trim();
+                const m1 = rawNum.match(/^(.{5})(\d{3})$/);
+                const 관리구 = m1 ? m1[1] : rawNum;
+                const 전산번호 = m1 ? m1[2] : '';
+
+                // 전주번호 파싱 → 간선명 / 번호
+                // 예: "나전간-392" → 간선명 "나전간", 번호 "392"
+                const poleName = node.name || '';
+                const m2 = poleName.match(/^(.+?)-(\d{1,4})$/);
+                const 간선명 = m2 ? m2[1] : poleName;
+                const 전주번호 = m2 ? m2[2] : '';
+
+                rows.push([관리구, 전산번호, 간선명, 전주번호]);
+            });
+
+            if (rows.length === 0) {
+                alert('이 케이블에 스냅된 전주가 없습니다.\n전주를 찍으면서 케이블을 연결했는지 확인하세요.');
+                return;
+            }
+
+            // SheetJS로 Excel 생성
+            const wsData = [['관리구', '번호', '간선명', '번호']].concat(rows);
+            const ws = XLSX.utils.aoa_to_sheet(wsData);
+            ws['!cols'] = [{ wch: 8 }, { wch: 6 }, { wch: 12 }, { wch: 6 }];
+
+            const wb = XLSX.utils.book_new();
+            const sheetName = ((fromNode?.name || 'A') + '_' + (toNode?.name || 'B')).slice(0, 31);
+            XLSX.utils.book_append_sheet(wb, ws, sheetName);
+            XLSX.writeFile(wb, '전주_' + sheetName + '.xlsx');
+        }
+
         // ==================== window 공개 ====================
         window.showNodeInfoModalForEdit = showNodeInfoModalForEdit;
         window.saveNodeInfo             = saveNodeInfo;
@@ -1173,6 +1272,7 @@
         window.confirmConnection        = confirmConnection;
         window.closeConnectionModal     = closeConnectionModal;
         window.deleteConnection         = deleteConnection;
+        window.exportPoleData           = exportPoleData;
         window.deleteWaypoint           = deleteWaypoint;
         window.startWaypointInsertModeById = startWaypointInsertModeById;
         window.cancelWaypointInsertMode = cancelWaypointInsertMode;

@@ -2,7 +2,11 @@
   "permissions": {
     "allow": [
       "Bash(where:*)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(grep:*)",
+      "Bash(do echo:*)",
+      "Bash(python3:*)",
+      "Bash(python:*)"
     ]
   }
 }

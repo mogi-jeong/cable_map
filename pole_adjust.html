@@ -2,323 +2,510 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>전주 좌표 보정</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"/>
 <style>
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: sans-serif; background: #1a1a2e; color: #eee; height: 100vh; display: flex; flex-direction: column; }
-#toolbar {
-    padding: 10px 16px; background: #0d0d1a; display: flex; align-items: center; gap: 12px;
-    border-bottom: 1px solid #333; flex-wrap: wrap;
-}
-#toolbar h2 { font-size: 15px; color: #7eb8f7; margin-right: 8px; }
-#status { font-size: 13px; color: #aaa; flex: 1; min-width: 200px; }
-#ref-panel {
-    display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
-}
-.ref-box {
-    font-size: 12px; padding: 5px 10px; border-radius: 6px;
-    background: #1a1a00; border: 1px solid #555; color: #ccc; min-width: 140px;
-}
-.ref-box.set { border-color: #4CAF50; color: #4CAF50; }
-button {
-    padding: 7px 14px; font-size: 13px; border-radius: 6px;
-    cursor: pointer; border: none; font-weight: bold;
-}
-.btn-apply  { background: #4CAF50; color: white; display: none; }
-.btn-cancel { background: #f44336; color: white; }
-.btn-reset  { background: #555; color: #eee; }
-#map { flex: 1; }
-#log {
-    position: fixed; bottom: 16px; right: 16px;
-    background: rgba(0,0,0,0.85); color: #0f0; font-family: monospace;
-    font-size: 12px; padding: 12px; border-radius: 8px;
-    max-width: 340px; display: none; white-space: pre-line; line-height: 1.6;
-}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Malgun Gothic',sans-serif;background:#1a1a2e;color:#e0e0e0;height:100vh;display:flex;flex-direction:column;overflow:hidden;}
+header{background:#16213e;padding:8px 14px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #0f3460;flex-shrink:0;height:44px;}
+header h1{font-size:14px;font-weight:700;color:#e94560;}
+header small{font-size:11px;color:#666;}
+.layout{display:flex;flex:1;min-height:0;height:calc(100vh - 44px);}
+
+/* 사이드바 */
+.sidebar{width:210px;background:#16213e;border-right:1px solid #0f3460;display:flex;flex-direction:column;flex-shrink:0;overflow-y:auto;}
+.sb{padding:8px 10px;border-bottom:1px solid #0f3460;}
+.sb-title{font-size:10px;color:#666;text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px;}
+.region-btn{display:flex;align-items:center;justify-content:space-between;width:100%;padding:6px 8px;background:transparent;border:none;color:#ccc;font-size:12px;cursor:pointer;border-radius:4px;border-left:3px solid transparent;font-family:'Malgun Gothic',sans-serif;transition:all .1s;}
+.region-btn:hover{background:#0f3460;}
+.region-btn.active{background:#e9456018;border-left-color:#e94560;color:#e94560;}
+.dot{width:7px;height:7px;border-radius:50%;background:#2a2a3e;flex-shrink:0;}
+.dot.ok{background:#4caf50;}
+
+/* 단계 */
+.step{display:flex;align-items:center;gap:7px;padding:4px 0;font-size:11px;color:#555;}
+.step-num{width:16px;height:16px;border-radius:50%;background:#2a2a3e;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;flex-shrink:0;}
+.step.done{color:#4caf50;}.step.done .step-num{background:#2e7d32;color:white;}
+.step.active{color:#fff;}.step.active .step-num{background:#e94560;color:white;}
+.step.sub{padding-left:22px;font-size:10px;color:#ff9800;}
+
+/* 기준점 */
+.pair-item{background:#0a1628;border:1px solid #1a3a5c;border-radius:5px;padding:6px 8px;margin-bottom:4px;font-size:10px;position:relative;}
+.pair-item .pi-num{font-weight:700;margin-bottom:3px;}
+.pair-item .pi-from{color:#888;}
+.pair-item .pi-from span{color:#ff9800;font-family:monospace;}
+.pair-item .pi-to{color:#888;margin-top:2px;}
+.pair-item .pi-to span{color:#4caf50;font-family:monospace;}
+.pair-item .pi-to.empty span{color:#e94560;}
+.pair-item .pi-del{position:absolute;top:5px;right:6px;background:none;border:none;color:#e94560;cursor:pointer;font-size:11px;padding:0;}
+
+/* 버튼 */
+.btn{padding:6px 10px;border:none;border-radius:4px;font-size:11px;cursor:pointer;font-weight:700;font-family:'Malgun Gothic',sans-serif;transition:all .1s;}
+.btn-red{background:#e94560;color:white;}.btn-red:hover{background:#c73652;}
+.btn-blue{background:#1a4a8a;color:white;}.btn-blue:hover{background:#2a5a9a;}
+.btn-green{background:#2e7d32;color:white;}.btn-green:hover{background:#388e3c;}
+.btn-gray{background:#2a2a3e;color:#aaa;}.btn-gray:hover{background:#3a3a4e;}
+.btn:disabled{opacity:.35;cursor:not-allowed;}
+.btn-row{display:flex;gap:5px;flex-wrap:wrap;margin-top:6px;}
+
+/* 정보 */
+.info{background:#0a1628;border:1px solid #1a3a5c;border-radius:4px;padding:6px 8px;font-size:10px;color:#666;margin-top:5px;line-height:1.7;}
+.info b{color:#7eb8f7;}
+
+/* 완료 현황 */
+.done-row{display:flex;justify-content:space-between;padding:3px 0;font-size:11px;}
+
+/* 지도 */
+.map-wrap{flex:1;min-width:0;position:relative;}
+#map{width:100%;height:100%;}
+.banner{position:absolute;top:10px;left:50%;transform:translateX(-50%);padding:7px 16px;border-radius:20px;font-size:12px;font-weight:700;z-index:999;pointer-events:none;display:none;white-space:nowrap;}
+.banner.pick-pole{background:#ff980099;color:white;}
+.banner.pick-pos{background:#4caf5099;color:white;}
+
+/* 토스트 */
+.toast{position:fixed;bottom:16px;right:16px;background:#222;color:white;padding:9px 14px;border-radius:7px;font-size:12px;z-index:9999;display:none;max-width:260px;line-height:1.5;}
+.toast.show{display:block;}
 </style>
 </head>
 <body>
-<div id="toolbar">
-    <h2>📍 전주 좌표 보정</h2>
-    <div id="status">전주를 클릭해서 기준점을 선택하세요</div>
-    <div id="ref-panel">
-        <div class="ref-box" id="ref1-box">기준점 1: 미설정</div>
-        <div class="ref-box" id="ref2-box">기준점 2: 미설정</div>
+
+<header>
+  <div style="width:20px;height:20px;background:#e94560;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;">⚡</div>
+  <h1>전주 좌표 보정</h1>
+  <small>전주 클릭 → 실제 위치 클릭 → 4쌍 → 보정 적용</small>
+  <div style="margin-left:auto;display:flex;gap:6px;align-items:center;">
+    <span id="poleCount" style="font-size:11px;color:#666;">파일 없음</span>
+    <button class="btn btn-blue" onclick="document.getElementById('fi').click()">📂 JSON 열기</button>
+    <input type="file" id="fi" accept=".json" onchange="loadJSON(this)" style="display:none;">
+    <button class="btn btn-green" id="saveBtn" onclick="saveJSON()" disabled>💾 저장</button>
+  </div>
+</header>
+
+<div class="layout">
+  <nav class="sidebar">
+    <!-- 지역 -->
+    <div class="sb">
+      <div class="sb-title">지역 선택</div>
+      <div id="regionList"></div>
     </div>
-    <button class="btn-apply"  id="btnApply"  onclick="applyTransform()">✅ 전체 적용</button>
-    <button class="btn-cancel" onclick="resetRefs()">✖ 초기화</button>
-    <button class="btn-reset"  onclick="loadAndRender()">🔄 새로고침</button>
+
+    <!-- 단계 안내 -->
+    <div class="sb">
+      <div class="sb-title">진행 단계</div>
+      <div id="stepList"></div>
+    </div>
+
+    <!-- 기준점 쌍 -->
+    <div class="sb">
+      <div class="sb-title">기준점 쌍 <span id="pairCount" style="color:#e94560;">0/4</span></div>
+      <div id="pairList"></div>
+      <div class="btn-row">
+        <button class="btn btn-gray" onclick="clearPairs()">🗑 초기화</button>
+      </div>
+      <div class="info">
+        ① <b>전주 클릭</b> → 주황 선택<br>
+        ② <b>실제 위치 클릭</b> → 초록 목표점<br>
+        4쌍 완성 후 보정 적용
+      </div>
+    </div>
+
+    <!-- 보정 -->
+    <div class="sb">
+      <div class="sb-title">보정</div>
+      <div style="font-size:11px;color:#888;margin-bottom:4px;">
+        지역: <b id="curRegionLbl" style="color:#e94560;">-</b>
+        · <b id="curCntLbl" style="color:#7eb8f7;">-</b>개
+      </div>
+      <div id="xformInfo" style="font-size:10px;color:#555;font-family:monospace;min-height:20px;margin-bottom:4px;"></div>
+      <button class="btn btn-green" id="applyBtn" onclick="applyTransform()" disabled style="width:100%;">✅ 이 지역 적용</button>
+    </div>
+
+    <!-- 완료 현황 -->
+    <div class="sb" style="flex:1;">
+      <div class="sb-title">완료 현황</div>
+      <div id="doneList"></div>
+    </div>
+  </nav>
+
+  <div class="map-wrap">
+    <div class="banner" id="bannerPole">🔶 전주를 클릭하세요</div>
+    <div class="banner" id="bannerPos">🟢 실제 위치를 클릭하세요 — ESC 취소</div>
+    <div id="map"></div>
+  </div>
 </div>
-<div id="map"></div>
-<div id="log" id="log"></div>
+<div class="toast" id="toast"></div>
 
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-var map = L.map('map').setView([37.44, 128.66], 13);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© OpenStreetMap'
-}).addTo(map);
+var REGIONS = ['문막','신림','영월','원주','정선','평창','횡성'];
+var allPoles = [];
+var curRegion = null;
+var regionDone = {};
+var poleMarkers = {};   // id → marker
+var pairs = [];         // [{src:{lat,lng,id}, dst:{lat,lng}}]
+var dstMarkers = [];    // 목표점 마커
+var lineMarkers = [];   // src-dst 연결선
+var selPoleId = null;   // 선택된 전주 id
+var pickingDst = false; // 목표점 클릭 대기
+var map;
 
-var allNodes = [];
-var leafletMarkers = [];
+// ── 지도 초기화 ──
+window.onload = function() {
+  map = L.map('map').setView([37.35, 128.0], 10);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+    maxZoom:19, attribution:'© OpenStreetMap'
+  }).addTo(map);
 
-// 기준점 2개: { node, marker, newLat, newLng }
-var refs = [null, null];
-var selectingRef = 0; // 0=첫번째 선택 중, 1=두번째 선택 중, 2=완료
+  map.on('click', function(e){
+    if(pickingDst) { pickDst(e.latlng.lat, e.latlng.lng); return; }
+  });
+  document.addEventListener('keydown', function(e){
+    if(e.key==='Escape') cancelPickDst();
+  });
 
-// ==================== IndexedDB ====================
-function getDB() {
-    return new Promise(function(resolve, reject) {
-        var req = indexedDB.open('cableMapDB', 1);
-        req.onupgradeneeded = function(e) {
-            var db = e.target.result;
-            if (!db.objectStoreNames.contains('poles'))
-                db.createObjectStore('poles', { keyPath: 'id' });
-        };
-        req.onsuccess = function(e) { resolve(e.target.result); };
-        req.onerror   = function(e) { reject(e.target.error); };
+  buildRegionList();
+  renderDoneList();
+  renderSteps();
+};
+
+// ── 지역 목록 ──
+function buildRegionList() {
+  var html='';
+  REGIONS.forEach(function(r){
+    html+='<button class="region-btn" id="rbtn-'+r+'" onclick="selectRegion(\''+r+'\')">'+
+      '<span>'+r+'</span><span class="dot" id="dot-'+r+'"></span></button>';
+  });
+  document.getElementById('regionList').innerHTML=html;
+}
+
+// ── JSON 로드 ──
+function loadJSON(input){
+  var file=input.files[0]; if(!file) return;
+  var r=new FileReader();
+  r.onload=function(e){
+    try{
+      var data=JSON.parse(e.target.result);
+      allPoles=Array.isArray(data)?data:(data.nodes||[]);
+      document.getElementById('poleCount').textContent=allPoles.length.toLocaleString()+'개';
+      document.getElementById('saveBtn').disabled=false;
+      renderDoneList();
+      renderSteps(1);
+      toast('✅ '+allPoles.length.toLocaleString()+'개 전주 로드됨');
+      if(curRegion) showRegionPoles(curRegion);
+    }catch(err){ toast('❌ JSON 오류: '+err.message); }
+  };
+  r.readAsText(file);
+}
+
+// ── 지역 선택 ──
+function selectRegion(r){
+  curRegion=r;
+  REGIONS.forEach(function(x){
+    var b=document.getElementById('rbtn-'+x);
+    if(b) b.className='region-btn'+(x===r?' active':'');
+  });
+  clearPairs();
+  showRegionPoles(r);
+  var cnt=getRegionPoles(r).length;
+  document.getElementById('curRegionLbl').textContent=r;
+  document.getElementById('curCntLbl').textContent=cnt.toLocaleString();
+  renderSteps(2);
+}
+
+function getRegionPoles(r){
+  return allPoles.filter(function(p){ return p.id&&p.id.indexOf(r)>=0; });
+}
+
+function showRegionPoles(r){
+  // 기존 마커 제거
+  Object.values(poleMarkers).forEach(function(m){ map.removeLayer(m); });
+  poleMarkers={};
+
+  var poles=getRegionPoles(r);
+  if(!poles.length) return;
+  var bounds=[];
+  var shown=0;
+  poles.forEach(function(p){
+    var lat=p.lat, lng=p.lng;
+    if(!lat||!lng||lat===0||lng===0) return;
+    if(shown>40000) return;
+    shown++;
+    var m=L.circleMarker([lat,lng],{
+      radius:3, color:'#e94560', fillColor:'#e94560',
+      fillOpacity:0.8, weight:0
     });
-}
-
-function idbGetAll(db) {
-    return new Promise(function(resolve, reject) {
-        var req = db.transaction('poles','readonly').objectStore('poles').getAll();
-        req.onsuccess = function() { resolve(req.result); };
-        req.onerror   = function() { reject(req.error); };
+    m.on('click', function(e){
+      L.DomEvent.stopPropagation(e);
+      onPoleClick(p, m);
     });
+    m.addTo(map);
+    poleMarkers[p.id]=m;
+    bounds.push([lat,lng]);
+  });
+  if(bounds.length) map.fitBounds(bounds,{padding:[30,30]});
+  toast('📍 '+r+' '+shown.toLocaleString()+'개 표시');
 }
 
-function idbReplaceAll(db, nodes) {
-    return new Promise(function(resolve, reject) {
-        var tx = db.transaction('poles','readwrite');
-        var store = tx.objectStore('poles');
-        store.clear();
-        nodes.forEach(function(n) { store.put(n); });
-        tx.oncomplete = resolve;
-        tx.onerror = function() { reject(tx.error); };
-    });
+// ── 전주 클릭 ──
+function onPoleClick(pole, marker){
+  if(pairs.length>=4){ toast('기준점 4쌍이 이미 완성됐습니다'); return; }
+  // 이미 선택된 전주면 취소
+  if(selPoleId===pole.id){ cancelPickDst(); return; }
+  // 이전 선택 해제
+  if(selPoleId && poleMarkers[selPoleId]){
+    poleMarkers[selPoleId].setStyle({color:'#e94560',fillColor:'#e94560',radius:3});
+  }
+  selPoleId=pole.id;
+  marker.setStyle({color:'#ff9800',fillColor:'#ff9800',radius:6});
+  pickingDst=true;
+  document.getElementById('bannerPole').style.display='none';
+  document.getElementById('bannerPos').style.display='block';
+  map.getContainer().style.cursor='crosshair';
+  renderSteps(3, pole);
+  toast('🟢 '+pole.name+' 선택됨 — 실제 위치 클릭');
 }
 
-// ==================== 렌더링 ====================
-function setStatus(msg) { document.getElementById('status').textContent = msg; }
-function logMsg(msg) {
-    var el = document.getElementById('log');
-    el.style.display = 'block';
-    el.textContent = msg;
+// ── 목표점 클릭 ──
+function pickDst(lat, lng){
+  if(!selPoleId) return;
+  var srcPole=allPoles.find(function(p){ return p.id===selPoleId; });
+  if(!srcPole) return;
+
+  // 연결선
+  var line=L.polyline([[srcPole.lat, srcPole.lng],[lat,lng]],{
+    color:'#ff980088', weight:1.5, dashArray:'4,4'
+  }).addTo(map);
+  lineMarkers.push(line);
+
+  // 목표점 마커
+  var idx=pairs.length+1;
+  var dm=L.marker([lat,lng],{
+    icon:L.divIcon({
+      className:'',
+      html:'<div style="background:#4caf50;color:white;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;border:2px solid white;box-shadow:0 2px 4px rgba(0,0,0,.5)">'+idx+'</div>',
+      iconSize:[20,20],iconAnchor:[10,10]
+    })
+  }).addTo(map);
+  dstMarkers.push(dm);
+
+  pairs.push({
+    src:{lat:srcPole.lat, lng:srcPole.lng, id:selPoleId, name:srcPole.name||selPoleId},
+    dst:{lat:lat, lng:lng}
+  });
+
+  // 선택된 전주 숫자 마커로 변경
+  if(poleMarkers[selPoleId]){
+    poleMarkers[selPoleId].setStyle({color:'#ff9800',fillColor:'#ff9800',radius:5});
+  }
+
+  selPoleId=null;
+  pickingDst=false;
+  document.getElementById('bannerPos').style.display='none';
+  map.getContainer().style.cursor='';
+
+  renderPairList();
+  document.getElementById('pairCount').textContent=pairs.length+'/4';
+
+  if(pairs.length>=4){
+    calcTransform();
+    document.getElementById('applyBtn').disabled=false;
+    renderSteps(4);
+    document.getElementById('bannerPole').style.display='none';
+  } else {
+    renderSteps(3);
+    document.getElementById('bannerPole').style.display='block';
+    toast('기준점 '+pairs.length+'/4 — 다음 전주 클릭');
+  }
 }
 
-async function loadAndRender() {
-    leafletMarkers.forEach(function(m) { map.removeLayer(m); });
-    leafletMarkers = [];
-    refs = [null, null];
-    selectingRef = 0;
-    updateRefBoxes();
-    document.getElementById('btnApply').style.display = 'none';
-    document.getElementById('log').style.display = 'none';
-
-    try {
-        var db = await getDB();
-        allNodes = await idbGetAll(db);
-    } catch(e) {
-        // IndexedDB 없으면 localStorage fallback
-        allNodes = JSON.parse(localStorage.getItem('fiberNodes') || '[]')
-            .filter(function(n) { return n.type === 'pole' || n.type === 'pole_existing' || n.type === 'pole_new' || n.type === 'pole_removed'; });
-    }
-
-    if (allNodes.length === 0) {
-        setStatus('❌ 전주 데이터 없음 — 이음에서 전주를 먼저 임포트하세요');
-        return;
-    }
-
-    var avgLat = allNodes.reduce(function(s,n){return s+n.lat;},0) / allNodes.length;
-    var avgLng = allNodes.reduce(function(s,n){return s+n.lng;},0) / allNodes.length;
-    map.setView([avgLat, avgLng], 14);
-
-    allNodes.forEach(function(node) {
-        var m = L.circleMarker([node.lat, node.lng], {
-            radius: 5, color: '#fff', weight: 1.5,
-            fillColor: '#4a90e2', fillOpacity: 0.9
-        }).addTo(map);
-        m.bindTooltip(node.name, { permanent: false, direction: 'top', offset: [0, -8] });
-        m.on('click', function() { onMarkerClick(m, node); });
-        m._nodeData = node;
-        leafletMarkers.push(m);
-    });
-
-    setStatus('전주 ' + allNodes.length + '개 로드됨 — 기준점 1번을 클릭하세요');
+function cancelPickDst(){
+  if(selPoleId && poleMarkers[selPoleId]){
+    poleMarkers[selPoleId].setStyle({color:'#e94560',fillColor:'#e94560',radius:3});
+  }
+  selPoleId=null; pickingDst=false;
+  document.getElementById('bannerPos').style.display='none';
+  if(pairs.length<4) document.getElementById('bannerPole').style.display='block';
+  map.getContainer().style.cursor='';
 }
 
-// ==================== 기준점 선택 ====================
-function onMarkerClick(m, node) {
-    if (selectingRef >= 2) return;
-
-    var idx = selectingRef;
-    refs[idx] = { node: node, marker: m, newLat: node.lat, newLng: node.lng };
-
-    // 마커 강조
-    m.setStyle({ fillColor: idx === 0 ? '#ff5722' : '#9c27b0', radius: 9, weight: 2.5 });
-
-    // 드래그 활성화
-    m.dragging && m.dragging.enable ? enableDrag(m, idx) : null;
-
-    selectingRef++;
-    updateRefBoxes();
-
-    if (selectingRef === 1) {
-        setStatus('기준점 1 선택됨 — 드래그해서 실제 위치로 이동 후, 기준점 2번을 클릭하세요');
-    } else {
-        setStatus('기준점 2 선택됨 — 두 기준점을 드래그해서 실제 위치로 맞추세요');
-        checkReady();
-    }
+// ── 기준점 쌍 렌더 ──
+function renderPairList(){
+  var colors=['#ff5722','#ff9800','#4caf50','#2196f3'];
+  var html='';
+  pairs.forEach(function(p,i){
+    html+='<div class="pair-item">';
+    html+='<div class="pi-num" style="color:'+colors[i]+'">'+(i+1)+'번 쌍</div>';
+    html+='<div class="pi-from">전주: <span>'+escLbl(p.src.name)+'</span></div>';
+    html+='<div class="pi-from">현재: <span>'+p.src.lat.toFixed(5)+', '+p.src.lng.toFixed(5)+'</span></div>';
+    html+='<div class="pi-to">목표: <span>'+p.dst.lat.toFixed(5)+', '+p.dst.lng.toFixed(5)+'</span></div>';
+    html+='<button class="pi-del" onclick="removePair('+i+')">✕</button>';
+    html+='</div>';
+  });
+  document.getElementById('pairList').innerHTML=html;
 }
 
-function enableDrag(m, idx) {
-    // circleMarker는 dragging 미지원 → 지도 클릭으로 위치 지정
-    // 대신 선택 후 지도 클릭 → 해당 기준점 이동
-    m.on('click', function(e) {
-        L.DomEvent.stopPropagation(e);
-        // 이미 선택된 기준점 재클릭 → 지도 클릭으로 위치 지정 모드
-        setStatus('기준점 ' + (idx+1) + ' 선택됨 — 지도에서 실제 위치를 클릭하세요');
-        map.once('click', function(ev) {
-            refs[idx].newLat = ev.latlng.lat;
-            refs[idx].newLng = ev.latlng.lng;
-            m.setLatLng([ev.latlng.lat, ev.latlng.lng]);
-            updateRefBoxes();
-            checkReady();
-            setStatus('기준점 ' + (idx+1) + ' 위치 지정 완료' + (selectingRef >= 2 ? ' — ✅ 버튼으로 전체 적용' : ''));
-        });
-    });
+function escLbl(s){ return String(s||'').replace(/</g,'&lt;'); }
+
+function removePair(i){
+  pairs.splice(i,1);
+  if(dstMarkers[i]){ map.removeLayer(dstMarkers[i]); dstMarkers.splice(i,1); }
+  if(lineMarkers[i]){ map.removeLayer(lineMarkers[i]); lineMarkers.splice(i,1); }
+  renderPairList();
+  document.getElementById('pairCount').textContent=pairs.length+'/4';
+  document.getElementById('applyBtn').disabled=true;
+  document.getElementById('xformInfo').textContent='';
 }
 
-function updateRefBoxes() {
-    for (var i = 0; i < 2; i++) {
-        var box = document.getElementById('ref' + (i+1) + '-box');
-        if (refs[i]) {
-            var dLat = refs[i].newLat - refs[i].node.lat;
-            var dLng = refs[i].newLng - refs[i].node.lng;
-            var dN = Math.round(dLat * 111320);
-            var dE = Math.round(dLng * 111320 * Math.cos(refs[i].node.lat * Math.PI/180));
-            box.className = 'ref-box set';
-            box.textContent = '기준' + (i+1) + ': ' + refs[i].node.name +
-                ' (' + (dN>=0?'+':'') + dN + 'm, ' + (dE>=0?'+':'') + dE + 'm)';
-        } else {
-            box.className = 'ref-box';
-            box.textContent = '기준점 ' + (i+1) + ': 미설정';
-        }
-    }
+function clearPairs(){
+  pairs=[];
+  dstMarkers.forEach(function(m){ map.removeLayer(m); }); dstMarkers=[];
+  lineMarkers.forEach(function(m){ map.removeLayer(m); }); lineMarkers=[];
+  if(selPoleId && poleMarkers[selPoleId]){
+    poleMarkers[selPoleId].setStyle({color:'#e94560',fillColor:'#e94560',radius:3});
+  }
+  selPoleId=null; pickingDst=false;
+  document.getElementById('bannerPole').style.display='none';
+  document.getElementById('bannerPos').style.display='none';
+  map.getContainer().style.cursor='';
+  renderPairList();
+  document.getElementById('pairCount').textContent='0/4';
+  document.getElementById('applyBtn').disabled=true;
+  document.getElementById('xformInfo').textContent='';
+  if(curRegion) renderSteps(2);
 }
 
-function checkReady() {
-    var r0 = refs[0], r1 = refs[1];
-    if (!r0 || !r1) return;
-    var d0 = Math.abs(r0.newLat - r0.node.lat) + Math.abs(r0.newLng - r0.node.lng);
-    var d1 = Math.abs(r1.newLat - r1.node.lat) + Math.abs(r1.newLng - r1.node.lng);
-    if (d0 > 0 || d1 > 0) {
-        document.getElementById('btnApply').style.display = 'inline-block';
-    }
+// ── 어파인 변환 계산 (최소자승법, n>=2) ──
+// dst = A * src + t  (2x2 + translation)
+// 여기서는 단순 평균 오프셋 + 스케일 사용 (4점)
+function calcTransform(){
+  if(pairs.length<2) return;
+  // 중심 기준 어파인 (similarity transform)
+  var n=pairs.length;
+  var srcLat=pairs.map(function(p){return p.src.lat;}); 
+  var srcLng=pairs.map(function(p){return p.src.lng;});
+  var dstLat=pairs.map(function(p){return p.dst.lat;});
+  var dstLng=pairs.map(function(p){return p.dst.lng;});
+
+  var cSLat=srcLat.reduce(function(a,b){return a+b;},0)/n;
+  var cSLng=srcLng.reduce(function(a,b){return a+b;},0)/n;
+  var cDLat=dstLat.reduce(function(a,b){return a+b;},0)/n;
+  var cDLng=dstLng.reduce(function(a,b){return a+b;},0)/n;
+
+  // 정규화
+  var sLat=srcLat.map(function(v){return v-cSLat;});
+  var sLng=srcLng.map(function(v){return v-cSLng;});
+  var dLat=dstLat.map(function(v){return v-cDLat;});
+  var dLng=dstLng.map(function(v){return v-cDLng;});
+
+  // a,b: [dst_lat,dst_lng] = [[a,-b],[b,a]] * [src_lat,src_lng] + [t_lat,t_lng]
+  var num1=0,num2=0,den=0;
+  for(var i=0;i<n;i++){
+    num1+=sLat[i]*dLat[i]+sLng[i]*dLng[i];
+    num2+=sLat[i]*dLng[i]-sLng[i]*dLat[i];
+    den+=sLat[i]*sLat[i]+sLng[i]*sLng[i];
+  }
+  if(den<1e-15){ toast('❌ 점들이 너무 가깝습니다'); return; }
+  var a=num1/den, b=num2/den;
+  var tLat=cDLat-(a*cSLat-b*cSLng);
+  var tLng=cDLng-(b*cSLat+a*cSLng);
+  var scale=Math.sqrt(a*a+b*b);
+  var rot=Math.atan2(b,a)*180/Math.PI;
+
+  window._xform={a:a,b:b,tLat:tLat,tLng:tLng};
+
+  // 잔차 RMSE
+  var rmse=0;
+  pairs.forEach(function(p){
+    var el=(a*p.src.lat-b*p.src.lng+tLat)-p.dst.lat;
+    var em=(b*p.src.lat+a*p.src.lng+tLng)-p.dst.lng;
+    rmse+=el*el+em*em;
+  });
+  rmse=Math.sqrt(rmse/n);
+
+  document.getElementById('xformInfo').innerHTML=
+    '스케일: <span style="color:#ff9800">'+scale.toFixed(6)+'</span><br>'+
+    '회전: <span style="color:#ff9800">'+rot.toFixed(4)+'°</span><br>'+
+    'RMSE: <span style="color:'+(rmse<1e-5?'#4caf50':'#f44336')+'">'+rmse.toFixed(7)+'</span>';
 }
 
-function resetRefs() {
-    leafletMarkers.forEach(function(m) {
-        m.setStyle({ fillColor: '#4a90e2', radius: 5, weight: 1.5 });
-        if (m._nodeData) m.setLatLng([m._nodeData.lat, m._nodeData.lng]);
-    });
-    refs = [null, null];
-    selectingRef = 0;
-    updateRefBoxes();
-    document.getElementById('btnApply').style.display = 'none';
-    document.getElementById('log').style.display = 'none';
-    setStatus('초기화됨 — 기준점 1번을 클릭하세요');
+// ── 보정 적용 ──
+function applyTransform(){
+  if(!window._xform||!curRegion) return;
+  var a=window._xform.a, b=window._xform.b;
+  var tLat=window._xform.tLat, tLng=window._xform.tLng;
+  var cnt=0;
+  allPoles.forEach(function(p){
+    if(!(p.file&&p.file.indexOf(curRegion)>=0)) return;
+    if(!p.lat||!p.lng||p.lat===0||p.lng===0) return;
+    var newLat=a*p.lat-b*p.lng+tLat;
+    var newLng=b*p.lat+a*p.lng+tLng;
+    p.lat=Math.round(newLat*1e7)/1e7;
+    p.lng=Math.round(newLng*1e7)/1e7;
+    cnt++;
+  });
+  regionDone[curRegion]=true;
+  var dot=document.getElementById('dot-'+curRegion);
+  if(dot) dot.className='dot ok';
+  renderDoneList();
+  showRegionPoles(curRegion);
+  clearPairs();
+  toast('✅ '+curRegion+' '+cnt.toLocaleString()+'개 보정 완료');
 }
 
-// ==================== 어파인 변환 ====================
-// 기준점 2개로 전체 전주에 선형 보간/어파인 변환 적용
-// src1→dst1, src2→dst2 를 만족하는 변환: translate + rotate + scale
-function computeAffine(src1, src2, dst1, dst2) {
-    // 복소수 어파인: dst = a*src + b
-    // src1 → dst1: a*src1 + b = dst1
-    // src2 → dst2: a*src2 + b = dst2
-    // → a = (dst2 - dst1) / (src2 - src1)
-    // → b = dst1 - a*src1
-    var sx1 = src1.lng, sy1 = src1.lat;
-    var sx2 = src2.lng, sy2 = src2.lat;
-    var dx1 = dst1.lng, dy1 = dst1.lat;
-    var dx2 = dst2.lng, dy2 = dst2.lat;
-
-    var dSrcX = sx2 - sx1, dSrcY = sy2 - sy1;
-    var dDstX = dx2 - dx1, dDstY = dy2 - dy1;
-    var denom = dSrcX*dSrcX + dSrcY*dSrcY;
-
-    if (denom < 1e-20) {
-        // 두 기준점 거의 같은 위치 → 단순 오프셋만
-        return { mode: 'offset', dLat: dy1 - sy1, dLng: dx1 - sx1 };
-    }
-
-    // a = (dDst / dSrc) 복소수 나눗셈
-    var aR = (dDstX*dSrcX + dDstY*dSrcY) / denom;
-    var aI = (dDstY*dSrcX - dDstX*dSrcY) / denom;
-    // b = dst1 - a*src1
-    var bR = dx1 - (aR*sx1 - aI*sy1);
-    var bI = dy1 - (aR*sy1 + aI*sx1);
-
-    return { mode: 'affine', aR: aR, aI: aI, bR: bR, bI: bI };
+// ── 저장 ──
+function saveJSON(){
+  var out={nodes:allPoles};
+  var blob=new Blob([JSON.stringify(out,null,2)],{type:'application/json'});
+  var a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='poles_output_poll_adjusted.json';
+  a.click();
+  toast('💾 poles_output_poll_adjusted.json 저장됨');
 }
 
-function applyTransformToNode(tf, node) {
-    if (tf.mode === 'offset') {
-        return { lat: node.lat + tf.dLat, lng: node.lng + tf.dLng };
-    }
-    var x = node.lng, y = node.lat;
-    var newX = tf.aR*x - tf.aI*y + tf.bR;
-    var newY = tf.aR*y + tf.aI*x + tf.bI;
-    return { lat: newY, lng: newX };
+// ── 단계 표시 ──
+function renderSteps(cur, pole){
+  var steps=[
+    {t:'JSON 파일 로드'},
+    {t:'지역 선택'},
+    {t:'전주 클릭 → 실제 위치 클릭 (×4)'},
+    {t:'보정 적용'}
+  ];
+  var html='';
+  steps.forEach(function(s,i){
+    var n=i+1;
+    var cls='step'+(n<(cur||1)?' done':n===(cur||1)?' active':'');
+    html+='<div class="'+cls+'"><div class="step-num">'+n+'</div><span>'+s.t+'</span></div>';
+  });
+  if(cur===3 && pole){
+    html+='<div class="step sub">✔ '+escLbl(pole.name)+' 선택됨</div>';
+  }
+  document.getElementById('stepList').innerHTML=html;
 }
 
-async function applyTransform() {
-    var r0 = refs[0], r1 = refs[1];
-    if (!r0 || !r1) { alert('기준점 2개를 모두 설정하세요'); return; }
-
-    var src1 = { lat: r0.node.lat, lng: r0.node.lng };
-    var src2 = { lat: r1.node.lat, lng: r1.node.lng };
-    var dst1 = { lat: r0.newLat,   lng: r0.newLng   };
-    var dst2 = { lat: r1.newLat,   lng: r1.newLng   };
-
-    var tf = computeAffine(src1, src2, dst1, dst2);
-
-    // 오차 계산
-    var p1 = applyTransformToNode(tf, r0.node);
-    var p2 = applyTransformToNode(tf, r1.node);
-    var e1m = Math.round(Math.sqrt(Math.pow((p1.lat-dst1.lat)*111320,2)+Math.pow((p1.lng-dst1.lng)*111320,2)));
-    var e2m = Math.round(Math.sqrt(Math.pow((p2.lat-dst2.lat)*111320,2)+Math.pow((p2.lng-dst2.lng)*111320,2)));
-
-    // 전주 전체에 적용
-    var count = 0;
-    allNodes.forEach(function(node) {
-        var p = applyTransformToNode(tf, node);
-        node.lat = p.lat;
-        node.lng = p.lng;
-        count++;
-    });
-
-    // IndexedDB 저장
-    try {
-        var db = await getDB();
-        await idbReplaceAll(db, allNodes);
-        logMsg('✅ ' + count + '개 전주 좌표 보정 완료\n' +
-            '변환 방식: ' + tf.mode + '\n' +
-            '기준1 오차: ' + e1m + 'm\n기준2 오차: ' + e2m + 'm\n\n' +
-            '이음 v2에서 Ctrl+Shift+R 하세요!');
-        setStatus('✅ ' + count + '개 전주 보정 완료 — 이음 v2에서 새로고침하세요');
-    } catch(e) {
-        logMsg('❌ 저장 실패: ' + e.message);
-    }
-
-    document.getElementById('btnApply').style.display = 'none';
-    loadAndRender();
+// ── 완료 현황 ──
+function renderDoneList(){
+  var html='';
+  REGIONS.forEach(function(r){
+    var cnt=allPoles.filter(function(p){return p.id&&p.id.indexOf(r)>=0;}).length;
+    var done=regionDone[r]?'✅':'⬜';
+    html+='<div class="done-row"><span>'+done+' '+r+'</span>'+
+      '<span style="color:#7eb8f7">'+cnt.toLocaleString()+'</span></div>';
+  });
+  document.getElementById('doneList').innerHTML=html||'<span style="color:#444;">JSON 로드 전</span>';
 }
 
-// 시작
-loadAndRender();
+// ── 토스트 ──
+function toast(msg){
+  var t=document.getElementById('toast');
+  t.textContent=msg; t.className='toast show';
+  clearTimeout(window._tt);
+  window._tt=setTimeout(function(){t.className='toast';},3000);
+}
+
+// 초기 단계
+renderSteps(1);
 </script>
 </body>
 </html>

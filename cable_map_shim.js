@@ -13,6 +13,16 @@
                 kakao.maps.event.addListener(this._m,'zoom_changed',function(){fn({});});
                 return this;
             }
+            if(ev==='move'){
+                // 카카오맵은 드래그 중 'drag' 이벤트 발생
+                kakao.maps.event.addListener(this._m,'drag',function(){fn({});});
+                return this;
+            }
+            if(ev==='zoomend'){
+                // zoom_changed: 줌 레벨이 바뀐 시점 (애니메이션 시작)
+                kakao.maps.event.addListener(this._m,'zoom_changed',function(){fn({});});
+                return this;
+            }
             var w=this._wfn(fn);
             if(!this._ls[ev])this._ls[ev]=[];
             this._ls[ev].push({fn:fn,w:w});
