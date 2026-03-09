@@ -790,23 +790,62 @@
                 }
             }, true); // capture phase — 지도 클릭보다 먼저
 
-            // 커서 변경 (전주 위에서 pointer)
+            // 커서 변경 + 호버 툴팁
+            var _tooltip = document.getElementById('poleHoverTooltip');
+            var _tooltipTimer = null;
+            var _lastHoverId = null;
+
             mapEl.addEventListener('mousemove', function(e) {
                 if (!map || !map._m) return;
                 var rect = mapEl.getBoundingClientRect();
                 var mx = e.clientX - rect.left;
                 var my = e.clientY - rect.top;
                 var zoom = map.getZoom();
-                if (zoom < 14) { window._poleCanvas.style.cursor = ''; return; }
-                var hit = false;
+                if (zoom < 14) {
+                    window._poleCanvas.style.cursor = '';
+                    if (_tooltip) _tooltip.style.display = 'none';
+                    _lastHoverId = null;
+                    return;
+                }
+
+                var hit = null, bestDist = 12;
                 for (var i = 0; i < nodes.length; i++) {
                     var node = nodes[i];
                     if (!isPoleType(node.type)) continue;
                     var pt = map.latLngToLayerPoint({ lat: node.lat, lng: node.lng });
-                    if (Math.sqrt(Math.pow(pt.x - mx, 2) + Math.pow(pt.y - my, 2)) < 12) { hit = true; break; }
+                    var d = Math.sqrt(Math.pow(pt.x - mx, 2) + Math.pow(pt.y - my, 2));
+                    if (d < bestDist) { bestDist = d; hit = node; }
                 }
+
                 window._poleCanvas.style.pointerEvents = hit ? 'auto' : 'none';
                 window._poleCanvas.style.cursor = hit ? 'pointer' : '';
+
+                if (!_tooltip) return;
+                if (hit) {
+                    // 이미 표시 중인 같은 전주면 위치만 업데이트
+                    if (_lastHoverId !== hit.id) {
+                        _lastHoverId = hit.id;
+                        var poleNum = (hit.memo || '').replace('전산화번호: ', '').replace(/자가주:true/g, '').trim();
+                        var label = (poleNum && hit.name) ? hit.name + ' (' + poleNum + ')' : (hit.name || poleNum || '');
+                        if (label) {
+                            _tooltip.textContent = label;
+                            _tooltip.style.display = 'block';
+                        } else {
+                            _tooltip.style.display = 'none';
+                        }
+                    }
+                    // 커서 오른쪽 아래에 고정
+                    _tooltip.style.left = (e.clientX + 14) + 'px';
+                    _tooltip.style.top  = (e.clientY + 14) + 'px';
+                } else {
+                    _lastHoverId = null;
+                    _tooltip.style.display = 'none';
+                }
+            });
+
+            mapEl.addEventListener('mouseleave', function() {
+                if (_tooltip) _tooltip.style.display = 'none';
+                _lastHoverId = null;
             });
         }
 

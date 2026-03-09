@@ -471,6 +471,22 @@
         }
         
         /* 전주 임포트 진행바 */
+        /* 전주 호버 툴팁 */
+        #poleHoverTooltip {
+            position: fixed;
+            display: none;
+            background: rgba(30,30,40,0.88);
+            color: #fff;
+            font-size: 12px;
+            font-family: 'Noto Sans KR', 'Malgun Gothic', sans-serif;
+            padding: 5px 10px;
+            border-radius: 6px;
+            pointer-events: none;
+            z-index: 9999;
+            white-space: nowrap;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+        }
+
         #importProgressOverlay {
             display: none;
             position: fixed;
@@ -1176,6 +1192,9 @@
     </div>
 
     <div class="status-message" id="statusMessage"></div>
+
+    <!-- 전주 호버 툴팁 -->
+    <div id="poleHoverTooltip"></div>
 
     <!-- 전주 임포트 진행바 오버레이 -->
     <div id="importProgressOverlay">
