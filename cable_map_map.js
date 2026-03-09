@@ -666,6 +666,30 @@
 
             var showLabel = zoom >= 15; // 레벨 3까지 라벨 표시
 
+            // 라벨 표시 기준: 케이블이 지나가거나 장비가 있는 전주만
+            var labelPoleIds = null;
+            if (showLabel) {
+                labelPoleIds = new Set();
+                // 케이블(connection)에 연결된 전주
+                connections.forEach(function(c) {
+                    if (c.nodeA) labelPoleIds.add(c.nodeA);
+                    if (c.nodeB) labelPoleIds.add(c.nodeB);
+                });
+                // 비전주 노드(장비)와 같은 위치에 있는 전주 (1m 이내)
+                var equips = nodes.filter(function(n) { return !isPoleType(n.type); });
+                if (equips.length > 0) {
+                    nodes.forEach(function(pole) {
+                        if (!isPoleType(pole.type)) return;
+                        var hasEquip = equips.some(function(eq) {
+                            var dlat = (eq.lat - pole.lat) * 111000;
+                            var dlng = (eq.lng - pole.lng) * 111000 * Math.cos(pole.lat * Math.PI / 180);
+                            return dlat * dlat + dlng * dlng < 4; // 2m 이내
+                        });
+                        if (hasEquip) labelPoleIds.add(pole.id);
+                    });
+                }
+            }
+
             var _offLat = window._polePreviewOffset ? window._polePreviewOffset.dLat : 0;
             var _offLng = window._polePreviewOffset ? window._polePreviewOffset.dLng : 0;
 
@@ -696,8 +720,10 @@
                 ctx.lineWidth   = isSelected ? 3 : 2;
                 ctx.stroke();
 
-                // 라벨 그리기 (zoom >= 16)
-                if (showLabel) {
+                // 라벨 그리기 (zoom >= 15, 케이블/장비 연결된 전주만)
+                if (showLabel && labelPoleIds) {
+                    if (!labelPoleIds.has(node.id)) return;
+
                     var poleNum = node.memo ? node.memo.replace('전산화번호: ','').replace(/자가주:true/g,'').trim() : '';
                     var label   = (poleNum && node.name) ? poleNum + '/' + node.name : (node.name || '');
                     if (!label) return;
