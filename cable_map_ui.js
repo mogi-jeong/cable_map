@@ -730,8 +730,9 @@
             }
             
             // 선 그리기
+            const cableColor = connection.color || '#FF0000';
             const polyline = L.polyline(path, {
-                color: '#FF0000',
+                color: cableColor,
                 weight: 4,
                 opacity: 0.8
             }).addTo(map);
@@ -822,7 +823,7 @@
                 accLen += segLens[i];
             }
             
-            const labelHTML = `<div class="connection-label">${connection.cores}코어</div>`;
+            const labelHTML = `<div class="connection-label" style="color:${cableColor};">${connection.cores}코어</div>`;
             
             const labelIcon = L.divIcon({
                 html: labelHTML,
@@ -889,7 +890,42 @@
             });
 
             polylines.push({ line: polyline, label: label, connId: connection.id });
-            
+
+            // 경간(구간별 거리) 라벨 표시 — 경유점이 있을 때만
+            if (path.length > 2) {
+                for (let si = 0; si < path.length - 1; si++) {
+                    var sLat1 = path[si][0], sLng1 = path[si][1];
+                    var sLat2 = path[si+1][0], sLng2 = path[si+1][1];
+                    var dLat = (sLat2 - sLat1) * Math.PI / 180;
+                    var dLng = (sLng2 - sLng1) * Math.PI / 180;
+                    var sa = Math.sin(dLat/2)*Math.sin(dLat/2) +
+                             Math.cos(sLat1*Math.PI/180)*Math.cos(sLat2*Math.PI/180)*
+                             Math.sin(dLng/2)*Math.sin(dLng/2);
+                    var spanM = Math.round(6371000 * 2 * Math.atan2(Math.sqrt(sa), Math.sqrt(1-sa)));
+                    if (spanM < 1) continue;
+                    var sMidLat = (sLat1 + sLat2) / 2;
+                    var sMidLng = (sLng1 + sLng2) / 2;
+                    // 케이블 방향 각도 계산 (화면 픽셀 기준)
+                    var pt1 = map.latLngToLayerPoint({ lat: sLat1, lng: sLng1 });
+                    var pt2 = map.latLngToLayerPoint({ lat: sLat2, lng: sLng2 });
+                    var angleDeg = Math.atan2(pt2.y - pt1.y, pt2.x - pt1.x) * 180 / Math.PI;
+                    // 글씨가 뒤집히지 않게 -90~90 범위로 보정
+                    if (angleDeg > 90) angleDeg -= 180;
+                    if (angleDeg < -90) angleDeg += 180;
+                    var spanIcon = L.divIcon({
+                        html: '<div class="span-label" style="color:' + cableColor + ';transform:rotate(' + angleDeg.toFixed(1) + 'deg) translateY(8px);transform-origin:center center;">' + spanM + 'm</div>',
+                        className: '',
+                        iconSize: [50, 16],
+                        iconAnchor: [25, 8]
+                    });
+                    var spanMarker = L.marker([sMidLat, sMidLng], {
+                        icon: spanIcon,
+                        zIndexOffset: -2000
+                    }).addTo(map);
+                    polylines.push({ marker: spanMarker, connId: connection.id });
+                }
+            }
+
             // 중간 점들에 클릭 가능한 마커 추가 (기본 숨김 — 케이블 클릭 시 표시)
             connection.waypoints.forEach((wp, index) => {
                 const waypointMarker = L.circleMarker([wp.lat, wp.lng], {

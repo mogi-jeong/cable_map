@@ -213,7 +213,66 @@
             nodes = nodes.concat(poleNodes);
         }
 
+        // ── Undo 시스템 ──
+        var _undoStack = [];
+        var _undoMax = 30;
+        var _undoSkipNext = false;
+        var _pendingPoleSnapshot = []; // 삭제/수정 전 전주 스냅샷
+
+        function pushUndoSnapshot() {
+            if (_undoSkipNext) { _undoSkipNext = false; return; }
+            var prevNodes = localStorage.getItem('fiberNodes') || '[]';
+            var prevConns = localStorage.getItem('fiberConnections') || '[]';
+            var entry = { nodes: prevNodes, connections: prevConns };
+            if (_pendingPoleSnapshot.length) {
+                entry.poleSnapshot = _pendingPoleSnapshot;
+                _pendingPoleSnapshot = [];
+            }
+            _undoStack.push(entry);
+            if (_undoStack.length > _undoMax) _undoStack.shift();
+        }
+
+        // 전주 삭제/수정 전에 호출 — 되돌리기용 스냅샷 저장
+        function markPoleForUndo(poleNode) {
+            _pendingPoleSnapshot.push(JSON.parse(JSON.stringify(poleNode)));
+        }
+
+        async function performUndo() {
+            if (!_undoStack.length) { if (typeof showStatus === 'function') showStatus('되돌릴 작업이 없습니다'); return; }
+            var snap = _undoStack.pop();
+            var restoredOtherNodes = JSON.parse(snap.nodes);
+            var poleNodes = nodes.filter(function(n) { return isPoleType(n.type); });
+            // 전주 스냅샷 복원 (삭제된 전주 복구 / 수정된 전주 원상복구)
+            if (snap.poleSnapshot && snap.poleSnapshot.length) {
+                snap.poleSnapshot.forEach(function(pole) {
+                    var idx = poleNodes.findIndex(function(n) { return n.id === pole.id; });
+                    if (idx !== -1) poleNodes[idx] = pole;
+                    else poleNodes.push(pole);
+                });
+            }
+            nodes = poleNodes.concat(restoredOtherNodes);
+            connections = JSON.parse(snap.connections);
+            _undoSkipNext = true;
+            await saveData();
+            // 복원된 전주를 IDB에 다시 기록
+            if (snap.poleSnapshot && snap.poleSnapshot.length) {
+                var db = await getDB();
+                await idbPutMany(db, snap.poleSnapshot);
+            }
+            // 모달 닫기
+            ['menuModal','nodeInfoModal','connectionModal','wireMapModal'].forEach(function(id) {
+                var el = document.getElementById(id);
+                if (el) el.classList.remove('active');
+            });
+            // 기존 비전주 마커 제거 후 재렌더링
+            Object.keys(markers).forEach(function(id) { if (markers[id]) markers[id].setMap(null); delete markers[id]; });
+            if (typeof renderAllNodes === 'function') renderAllNodes();
+            if (typeof renderAllConnections === 'function') renderAllConnections();
+            if (typeof showStatus === 'function') showStatus('되돌렸습니다 (Ctrl+Z)');
+        }
+
         async function saveData() {
+            pushUndoSnapshot();
             const poleNodes  = nodes.filter(n =>  isPoleType(n.type));
             const otherNodes = nodes.filter(n => !isPoleType(n.type));
 
@@ -228,6 +287,9 @@
             const db = await getDB();
             await idbPutMany(db, poleNodes);
         }
+
+        window.markPoleForUndo = markPoleForUndo;
+        window.performUndo     = performUndo;
 
         window.loadPolesFromIDB  = loadPolesFromIDB;
         window.loadPolesInBounds = loadPolesInBounds;

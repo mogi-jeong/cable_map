@@ -8,7 +8,7 @@
                 var mapEl = document.getElementById('map');
                 _poleCanvas = document.createElement('canvas');
                 _poleCanvas.id = 'poleCanvas';
-                _poleCanvas.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:200;';
+                _poleCanvas.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:100;';
                 mapEl.appendChild(_poleCanvas);
                 _poleCtx = _poleCanvas.getContext('2d');
                 _poleCanvasReady = true;
@@ -217,14 +217,59 @@
                 refreshPoles();
                 showStatus('');
                 
-                // ESC 키 이벤트 (케이블 연결 취소)
+                // Ctrl+Z 되돌리기
+                document.addEventListener('keydown', function(e) {
+                    if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+                        e.preventDefault();
+                        performUndo();
+                        return;
+                    }
+                });
+
+                // ESC 키 이벤트 — 모든 모드/모달 취소 (우선순위: 확인창 > 모달 > 모드)
                 document.addEventListener('keydown', function(e) {
                     if (e.key === 'Escape' || e.keyCode === 27) {
-                        if (connectingMode) {
-                            cancelConnecting();
+                        // 1) 확인 다이얼로그
+                        var confirmDlg = document.getElementById('confirmDialog');
+                        if (confirmDlg && confirmDlg.style.display !== 'none') {
+                            var noBtn = document.getElementById('confirmNoBtn');
+                            if (noBtn) noBtn.click();
+                            return;
                         }
-                        if (addingMode) {
-                            cancelAdding();
+                        // 2) RN 팝업
+                        var rnPopup = document.getElementById('rnPopup');
+                        if (rnPopup) { rnPopup.remove(); return; }
+                        // 3) 모달 (최상위부터 닫기)
+                        var modals = [
+                            { id: 'coreChangeModal', fn: typeof closeCoreChangeModal === 'function' ? closeCoreChangeModal : null },
+                            { id: 'ofdDetailModal',  fn: typeof closeOFDDetailModal === 'function' ? closeOFDDetailModal : null },
+                            { id: 'ofdModal',        fn: typeof closeOFDModal === 'function' ? closeOFDModal : null },
+                            { id: 'rnModal',         fn: typeof closeRNModal === 'function' ? closeRNModal : null },
+                            { id: 'wireMapModal',    fn: typeof closeWireMap === 'function' ? closeWireMap : null },
+                            { id: 'connectionModal', fn: typeof closeConnectionModal === 'function' ? closeConnectionModal : null },
+                            { id: 'nodeInfoModal',   fn: typeof closeNodeInfoModal === 'function' ? closeNodeInfoModal : null },
+                            { id: 'menuModal',       fn: typeof closeMenuModal === 'function' ? closeMenuModal : null }
+                        ];
+                        for (var mi = 0; mi < modals.length; mi++) {
+                            var el = document.getElementById(modals[mi].id);
+                            if (el && el.classList.contains('active')) {
+                                if (modals[mi].fn) modals[mi].fn();
+                                else el.classList.remove('active');
+                                return;
+                            }
+                        }
+                        // 4) 지도 팝업 (케이블 클릭 InfoWindow 등)
+                        if (map) { map.closePopup(); }
+                        // 5) 모드 취소
+                        if (connectingMode) { cancelConnecting(); return; }
+                        if (addingMode) { cancelAdding(); return; }
+                        if (movingNodeMode) {
+                            movingNodeMode = false;
+                            movingNode = null;
+                            hideStatus();
+                            renderAllNodes();
+                            renderAllConnections();
+                            return;
                         }
                     }
                 });
@@ -238,10 +283,10 @@
                         if (_junctionCircle && _junctionPole) {
                             var dist = latlngDist(e.latlng.lat, e.latlng.lng, _junctionPole.lat, _junctionPole.lng);
                             if (dist <= 20) {
-                                // 원 안 → 함체 생성
+                                // 원 안 → 사용자가 클릭한 위치에 함체 생성
                                 var poleName = _junctionPole.name || '';
-                                var poleLat  = _junctionPole.lat;  // clearJunctionRadius() 전에 저장
-                                var poleLng  = _junctionPole.lng;
+                                var poleLat  = e.latlng.lat;
+                                var poleLng  = e.latlng.lng;
                                 clearJunctionRadius();
                                 cancelAdding();
                                 document.getElementById('junctionConfirmPopup').style.display = 'none';
@@ -680,20 +725,29 @@
                         });
                     }
                 });
-                // 비전주 노드(장비)와 같은 위치에 있는 전주 (1m 이내)
-                var equips = nodes.filter(function(n) { return !isPoleType(n.type); });
+                // 케이블 연결된 장비 근처 전주 (20m 이내) — 함체가 전주 위에 설치된 경우
+                var connectedEquipIds = new Set();
+                connections.forEach(function(c) {
+                    if (c.nodeA) connectedEquipIds.add(c.nodeA);
+                    if (c.nodeB) connectedEquipIds.add(c.nodeB);
+                });
+                var equips = nodes.filter(function(n) {
+                    return !isPoleType(n.type) && connectedEquipIds.has(n.id);
+                });
                 if (equips.length > 0) {
                     nodes.forEach(function(pole) {
                         if (!isPoleType(pole.type)) return;
                         var hasEquip = equips.some(function(eq) {
                             var dlat = (eq.lat - pole.lat) * 111000;
                             var dlng = (eq.lng - pole.lng) * 111000 * Math.cos(pole.lat * Math.PI / 180);
-                            return dlat * dlat + dlng * dlng < 4; // 2m 이내
+                            return dlat * dlat + dlng * dlng < 100; // 10m 이내
                         });
                         if (hasEquip) labelPoleIds.add(pole.id);
                     });
                 }
             }
+            // 함체 배치 모드에서 선택된 전주 라벨 표시
+            if (_junctionPole) labelPoleIds.add(_junctionPole.id);
 
             var _offLat = window._polePreviewOffset ? window._polePreviewOffset.dLat : 0;
             var _offLng = window._polePreviewOffset ? window._polePreviewOffset.dLng : 0;
@@ -718,15 +772,15 @@
                 var isSearchHit = window._poleSearchHighlight && window._poleSearchHighlight === node.id;
                 var isMoving = _poleMoveMode && isSelected;
 
-                // 원 그리기
-                var radius = isSearchHit ? 10 : 6;
+                // 원 그리기 (절반 크기)
+                var radius = isSearchHit ? 14 : 4;
                 ctx.globalAlpha = isMoving ? 0.5 : 1.0;
                 ctx.beginPath();
                 ctx.arc(x, y, radius, 0, Math.PI * 2);
                 ctx.fillStyle = isSearchHit ? '#f39c12' : (isMoving ? '#2980b9' : color);
                 ctx.fill();
                 ctx.strokeStyle = isSearchHit ? '#e67e22' : (isSelected ? '#9b59b6' : 'white');
-                ctx.lineWidth   = isSearchHit ? 3 : (isSelected ? 3 : 2);
+                ctx.lineWidth   = isSearchHit ? 2 : (isSelected ? 2 : 1.5);
                 ctx.stroke();
                 ctx.globalAlpha = 1.0;
 
@@ -739,7 +793,7 @@
                     if (!label) return;
 
                     var angle  = node.labelAngle  != null ? node.labelAngle  : 0;
-                    var offset = node.labelOffset != null ? node.labelOffset : 20;
+                    var offset = node.labelOffset != null ? node.labelOffset : 0;
 
                     ctx.save();
                     ctx.translate(x + 7, y);
@@ -749,16 +803,18 @@
                     ctx.font = 'bold 11px "Malgun Gothic", sans-serif';
                     var tw = ctx.measureText(label).width;
                     var th = 14;
-                    // 배경 박스
-                    ctx.fillStyle = 'rgba(255,255,255,0.92)';
-                    ctx.strokeStyle = '#aaaaaa';
-                    ctx.lineWidth = 1;
-                    ctx.beginPath();
-                    ctx.roundRect(0, -th/2 - 2, tw + 10, th + 4, 3);
-                    ctx.fill();
-                    ctx.stroke();
+                    // 배경 박스 (스카이뷰: 흰색 배경, 지도뷰: 투명)
+                    if (window._isSkyView) {
+                        ctx.fillStyle = 'rgba(255,255,255,0.92)';
+                        ctx.strokeStyle = '#aaaaaa';
+                        ctx.lineWidth = 1;
+                        ctx.beginPath();
+                        ctx.roundRect(0, -th/2 - 2, tw + 10, th + 4, 3);
+                        ctx.fill();
+                        ctx.stroke();
+                    }
                     // 텍스트
-                    ctx.fillStyle = isSelected ? '#9b59b6' : '#1a1a1a';
+                    ctx.fillStyle = isSelected ? '#9b59b6' : (window._isSkyView ? '#1a1a1a' : '#333');
                     ctx.fillText(label, 5, th/2 - 1);
                     ctx.restore();
                 }
@@ -766,17 +822,34 @@
             ctx.restore();
         }
         window.drawPoleCanvas = drawPoleCanvas;
+        window.renderAllNodes = renderAllNodes;
 
         // Canvas 클릭 감지 초기화 (initMap 이후 호출)
         function initPoleCanvasEvents() {
             var mapEl = document.getElementById('map');
             mapEl.addEventListener('click', function(e) {
                 if (!map || !map._m) return;
+                // 장비 마커 클릭이면 전주 무시 (장비 > 케이블 > 전주)
+                if (window._nodeJustClicked) return;
+                var target = e.target;
+                while (target && target !== mapEl) {
+                    if (target.classList && (target.classList.contains('custom-marker') || target.classList.contains('custom-div-icon'))) return;
+                    target = target.parentElement;
+                }
                 var rect = mapEl.getBoundingClientRect();
                 var mx = e.clientX - rect.left;
                 var my = e.clientY - rect.top;
                 var zoom = map.getZoom();
                 if (zoom < 13) return;
+                // 근처에 장비 마커가 있으면 전주 무시 (클릭 우선순위: 장비 > 전주)
+                var equipHit = false;
+                nodes.forEach(function(node) {
+                    if (isPoleType(node.type)) return;
+                    var pt = map.latLngToLayerPoint({ lat: node.lat, lng: node.lng });
+                    var d = Math.sqrt(Math.pow(pt.x - mx, 2) + Math.pow(pt.y - my, 2));
+                    if (d < 20) equipHit = true;
+                });
+                if (equipHit) return;
                 var hit = null, bestDist = 12; // 클릭 반경 12px
                 nodes.forEach(function(node) {
                     if (!isPoleType(node.type)) return;
@@ -879,12 +952,14 @@
                 fillOpacity: 0.08
             });
             _junctionCircle.setMap(map._m);
+            drawPoleCanvas();
             showStatus('원 안에서 함체 위치를 클릭하세요  (ESC: 취소)');
         }
 
         function clearJunctionRadius() {
             if (_junctionCircle) { _junctionCircle.setMap(null); _junctionCircle = null; }
             _junctionPole = null;
+            drawPoleCanvas();
         }
 
         // 두 좌표 간 거리(m)
@@ -1082,6 +1157,7 @@
 
         function savePoleInfo(nodeId) {
             const node = nodes.find(n=>n.id===nodeId); if(!node) return;
+            markPoleForUndo(node);
             const isSelf = document.getElementById('poleSelfCheck').checked;
             const poleNum = document.getElementById('poleNumInput').value.trim();
             node.memo = (poleNum ? '전산화번호: '+poleNum : '') + (isSelf ? '자가주:true' : '');
@@ -1131,7 +1207,7 @@
         function deletePole(nodeId) {
             if(!confirm('전주를 삭제할까요?')) return;
             const idx = nodes.findIndex(n=>n.id===nodeId);
-            if(idx!==-1) nodes.splice(idx,1);
+            if(idx!==-1) { markPoleForUndo(nodes[idx]); nodes.splice(idx,1); }
             saveData(); drawPoleCanvas(); closeMenuModal(); showStatus('전주 삭제 완료');
         }
 
@@ -1276,8 +1352,10 @@
 
         // 스카이뷰 토글
         let _isSkyView = false;
+        window._isSkyView = false;
         function toggleSkyView() {
             _isSkyView = !_isSkyView;
+            window._isSkyView = _isSkyView;
             map._m.setMapTypeId(
                 _isSkyView ? kakao.maps.MapTypeId.HYBRID : kakao.maps.MapTypeId.ROADMAP
             );
@@ -1286,6 +1364,7 @@
                 btn.classList.toggle('active', _isSkyView);
                 btn.querySelector('.tb-label').textContent = _isSkyView ? '지도뷰' : '스카이뷰';
             }
+            drawPoleCanvas();
         }
         window.toggleSkyView = toggleSkyView;
 
@@ -1599,6 +1678,31 @@
             cancelPoleSelect();
         }
 
+        function deleteSelectedPoles() {
+            if (!_poleSelectedNodes || _poleSelectedNodes.length === 0) {
+                showStatus('선택된 전주가 없습니다');
+                return;
+            }
+            var count = _poleSelectedNodes.length;
+            showConfirm(count + '개 전주를 삭제할까요?', function() {
+                var ids = new Set(_poleSelectedNodes.map(function(n) { return n.id; }));
+                _poleSelectedNodes.forEach(function(n) { markPoleForUndo(n); });
+                nodes = nodes.filter(function(n) { return !ids.has(n.id); });
+                // IDB에서도 삭제
+                (async function() {
+                    var db = await getDB();
+                    var tx = db.transaction('poles', 'readwrite');
+                    var store = tx.objectStore('poles');
+                    ids.forEach(function(id) { store.delete(id); });
+                })();
+                saveData();
+                drawPoleCanvas();
+                cancelPoleSelect();
+                showStatus(count + '개 전주 삭제 완료');
+            }, '', '삭제');
+        }
+        window.deleteSelectedPoles = deleteSelectedPoles;
+
         function cancelPoleSelect() {
             // 이동 모드 중이면 원본 복원
             if (_poleMoveMode && _poleMoveOrigins) {
@@ -1815,6 +1919,16 @@
         if (typeof drawPoleCanvas === 'function') drawPoleCanvas();
     };
 
+    // +/- 1m 단위 미세 조정
+    window.nudgeOffset = function(axis, delta) {
+        var id = axis === 'lat' ? 'offsetLatSlider' : 'offsetLngSlider';
+        var slider = document.getElementById(id);
+        var cur = parseInt(slider.value) || 0;
+        var next = Math.max(parseInt(slider.min), Math.min(parseInt(slider.max), cur + delta));
+        slider.value = next;
+        window.updateOffsetPreview();
+    };
+
     window.saveCurrentRegionOffset = function() {
         var region = document.getElementById('offsetRegionSelect').value;
         if (!region) { alert('지역을 선택해주세요.'); return; }
@@ -2023,10 +2137,18 @@
         });
     }
 
+    function showSearchLoading() {
+        var box = document.getElementById('poleSearchResults');
+        if (!box) return;
+        box.innerHTML = '<div class="sr-empty" style="display:flex;align-items:center;justify-content:center;gap:8px;"><span class="sr-spinner"></span> 검색 중...</div>';
+        box.style.display = 'block';
+    }
+
     window.onPoleSearchInput = function(val) {
         if (_searchTimer) clearTimeout(_searchTimer);
         val = val.trim();
         if (val.length < 1) { window.hidePoleSearchResults(); return; }
+        showSearchLoading();
         _searchTimer = setTimeout(async function() {
             var poleResults = await searchPoles(val);
             if (poleResults.length > 0) {
@@ -2043,6 +2165,7 @@
         var val = (document.getElementById('poleSearchInput') || {}).value || '';
         val = val.trim();
         if (!val) return;
+        showSearchLoading();
         var poleResults = await searchPoles(val);
         if (poleResults.length === 1) {
             window.onPoleSearchSelect('pole', 0);
