@@ -35,7 +35,7 @@
             svg.style.width = '100%';
             svg.style.height = '100%';
             svg.style.pointerEvents = 'none';
-            svg.style.zIndex = '1';
+            svg.style.zIndex = '3';
             svg.id = 'connectionSvg';
             
             // 전단 컬럼 래퍼 (IN1/IN2 세로 쌓기)
@@ -48,32 +48,27 @@
             leftColumn.style.gap = '20px';
 
             // IN 색상 배열
-            const inColors = ['#667eea', '#1abc9c'];
+            const inColors = ['#1a6fd4', '#0d9488'];
 
             // IN1/IN2 각각 렌더링
             upConns.forEach((upConn, inIdx) => {
                 const upNode = upNodes[inIdx];
-                const inLabel = upConns.length > 1 ? `IN${inIdx + 1}: ` : 'IN: ';
+                const inTag = upConns.length > 1 ? `IN${inIdx + 1}` : 'IN';
                 const inColor = inColors[inIdx % inColors.length];
 
                 const inBlock = document.createElement('div');
 
                 const inHeader = document.createElement('div');
-                inHeader.style.padding = '15px';
-                inHeader.style.background = inColor;
-                inHeader.style.color = 'white';
-                inHeader.style.fontWeight = 'bold';
-                inHeader.style.textAlign = 'center';
-                inHeader.style.borderRadius = '5px 5px 0 0';
-                inHeader.style.fontSize = '16px';
-                inHeader.textContent = `${inLabel}${upNode ? upNode.name || '이름 없음' : ''}`;
+                inHeader.style.cssText = `padding:12px 16px; background:${inColor}; color:white; font-weight:700; text-align:center; border-radius:8px 8px 0 0; font-size:14px; display:flex; align-items:center; justify-content:center; gap:8px;`;
+                inHeader.innerHTML = `<span style="background:rgba(255,255,255,0.2);padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;letter-spacing:0.5px;">${inTag}</span> ${escapeHtml(upNode ? upNode.name || '이름 없음' : '')}`;
                 inBlock.appendChild(inHeader);
 
                 const inList = document.createElement('div');
-                inList.style.border = `3px solid ${inColor}`;
+                inList.style.border = `2px solid ${inColor}`;
                 inList.style.borderTop = 'none';
-                inList.style.borderRadius = '0 0 5px 5px';
+                inList.style.borderRadius = '0 0 8px 8px';
                 inList.style.background = 'white';
+                inList.style.overflow = 'hidden';
                 inList.id = `inList-${inIdx}`;
 
                 // 이 IN의 포트 데이터
@@ -131,7 +126,7 @@
                         const end = Math.min(portNum + 11, thisMaxCores);
                         const tc = wireMapTubeColors[(tubeNum - 1) % 12];
                         const tubeLabel = document.createElement('div');
-                        tubeLabel.style.cssText = `padding:3px 10px; background:${tc.bg}; font-size:11px; font-weight:bold; color:${tc.text}; border-top:2px solid ${tc.border}; border-bottom:1px solid ${tc.border}; display:flex; align-items:center; justify-content:space-between;`;
+                        tubeLabel.style.cssText = `padding:4px 12px; background:${tc.bg}; font-size:11px; font-weight:700; color:${tc.text}; border-top:2px solid ${tc.border}; border-bottom:1px solid ${tc.border}; display:flex; align-items:center; justify-content:space-between; letter-spacing:0.2px;`;
                         const tubeText = document.createElement('span');
                         tubeText.textContent = `튜브 ${tubeNum} ${tc.name}  (${portNum}~${end}번)`;
                         tubeLabel.appendChild(tubeText);
@@ -139,8 +134,8 @@
                         const btnGroup = document.createElement('div');
                         btnGroup.style.cssText = 'display:flex; align-items:center; gap:4px;';
                         const tubeDisBtn = document.createElement('button');
-                        tubeDisBtn.textContent = '✕ 해제';
-                        tubeDisBtn.style.cssText = `padding:2px 8px; background:rgba(231,76,60,0.75); color:white; border:1px solid rgba(192,57,43,0.8); border-radius:4px; font-size:10px; font-weight:bold; cursor:pointer;`;
+                        tubeDisBtn.textContent = '해제';
+                        tubeDisBtn.style.cssText = `padding:2px 8px; background:rgba(220,38,38,0.1); color:#dc2626; border:1px solid rgba(220,38,38,0.2); border-radius:4px; font-size:10px; font-weight:600; cursor:pointer; transition:background 0.15s;`;
                         tubeDisBtn.onclick = (e) => {
                             e.stopPropagation();
                             const inConn = currentWireMapUpstreamConns[inIdx] || null;
@@ -168,18 +163,18 @@
                         tubeBtn.dataset.endPort = end;
                         tubeBtn.className = 'tube-select-btn in-tube-btn';
                         tubeBtn.textContent = '튜브 선택';
-                        tubeBtn.style.cssText = `padding:2px 8px; background:rgba(0,0,0,0.15); color:${tc.text}; border:1px solid ${tc.border}; border-radius:4px; font-size:10px; font-weight:bold; cursor:pointer;`;
+                        tubeBtn.style.cssText = `padding:2px 8px; background:rgba(0,0,0,0.08); color:${tc.text}; border:1px solid rgba(0,0,0,0.08); border-radius:4px; font-size:10px; font-weight:600; cursor:pointer; transition:background 0.15s;`;
                         tubeBtn.onclick = (e) => { e.stopPropagation(); selectInTube(inIdx, tubeNum, portNum, end); };
                         const inLabelToggle = document.createElement('button');
-                        inLabelToggle.dataset.show = '1';
-                        inLabelToggle.textContent = '👁';
+                        inLabelToggle.dataset.show = '0';
+                        inLabelToggle.textContent = '👁‍🗨';
                         inLabelToggle.title = '이름표 ON/OFF';
-                        inLabelToggle.style.cssText = 'padding:2px 7px; background:rgba(91,141,238,0.85); color:white; border:none; border-radius:4px; font-size:10px; cursor:pointer;';
+                        inLabelToggle.style.cssText = 'padding:2px 7px; background:rgba(150,150,150,0.7); color:white; border:none; border-radius:4px; font-size:10px; cursor:pointer;';
                         inLabelToggle.onclick = (e) => {
                             e.stopPropagation();
                             const show = inLabelToggle.dataset.show === '1';
                             inLabelToggle.dataset.show = show ? '0' : '1';
-                            inLabelToggle.style.background = show ? 'rgba(150,150,150,0.7)' : 'rgba(91,141,238,0.85)';
+                            inLabelToggle.style.background = show ? 'rgba(150,150,150,0.7)' : 'rgba(26,111,212,0.7)';
                             inLabelToggle.textContent = show ? '👁‍🗨' : '👁';
                             document.querySelectorAll(`.wm-namelabel[data-tube="in-${inIdx}-${tubeNum}"]`).forEach(el => {
                                 el.style.display = show ? 'none' : '';
@@ -196,36 +191,37 @@
                     const textColor = [8,9,10,11].includes(coreIdx) ? '#333' : 'white';
 
                     const row = document.createElement('div');
-                    row.style.cssText = `display:flex; align-items:center; padding:6px 10px; border-bottom:1px solid ${tc.border}22; min-height:44px; background:${tc.bg};`;
+                    row.style.cssText = `display:flex; align-items:center; padding:5px 10px; border-bottom:1px solid ${tc.border}18; min-height:40px; background:${tc.bg};`;
 
                     const labelSpan = document.createElement('span');
-                    labelSpan.style.flex = '1';
-                    labelSpan.style.fontSize = '13px';
+                    labelSpan.style.cssText = 'flex:1; font-size:12.5px; color:#334155;';
                     if (rn) {
                         const strong = document.createElement('strong');
-                        strong.style.fontSize = '15px';
+                        strong.style.cssText = 'font-size:14px; font-weight:700; color:#1e293b;';
                         strong.textContent = portNum;
                         labelSpan.appendChild(strong);
                         labelSpan.appendChild(document.createTextNode(' ' + label));
                         const rnBadge = document.createElement('span');
-                        rnBadge.style.cssText = 'font-size:12px; color:#9b59b6; font-weight:bold; margin-left:4px;';
+                        rnBadge.style.cssText = 'font-size:11px; color:#7c3aed; font-weight:600; margin-left:4px;';
                         rnBadge.textContent = `(${selectedNode.name} ${rn.type}RN)`;
                         labelSpan.appendChild(rnBadge);
                         const delBtn = document.createElement('button');
                         delBtn.title = 'RN 삭제';
-                        delBtn.style.cssText = 'margin-left:6px; padding:1px 7px; background:#e74c3c; color:white; border:none; border-radius:4px; cursor:pointer; font-size:11px; font-weight:bold; vertical-align:middle;';
+                        delBtn.style.cssText = 'margin-left:6px; padding:1px 7px; background:rgba(220,38,38,0.1); color:#dc2626; border:1px solid rgba(220,38,38,0.15); border-radius:4px; cursor:pointer; font-size:10px; font-weight:600; vertical-align:middle;';
                         delBtn.textContent = '✕ RN';
                         delBtn.onclick = (e) => { e.stopPropagation(); removeRN(portNum); };
                         labelSpan.appendChild(delBtn);
                     } else {
-                        labelSpan.innerHTML = `<strong style="font-size:15px;">${portNum}</strong> ${escapeHtml(label)}`;
+                        labelSpan.innerHTML = `<strong style="font-size:14px;font-weight:700;color:#1e293b;">${portNum}</strong> ${escapeHtml(label)}`;
                     }
 
                     const btn = document.createElement('button');
                     btn.id = `from-${inIdx}-${portNum}`;
                     btn.className = 'port-btn from-port';
                     btn.textContent = portNum;
-                    btn.style.cssText = `padding:5px 12px; border:2px solid ${coreColor}; border-radius:6px; cursor:pointer; background:${coreColor}; color:${textColor}; font-weight:bold; font-size:13px; min-width:44px;`;
+                    btn.style.cssText = `padding:4px 10px; border:none; border-radius:6px; cursor:pointer; background:${coreColor}; color:${textColor}; font-weight:700; font-size:12px; min-width:40px; box-shadow:0 1px 3px rgba(0,0,0,0.15); transition:transform 0.1s,box-shadow 0.1s;`;
+                    btn.onmouseenter = function() { this.style.transform='scale(1.08)'; this.style.boxShadow='0 2px 6px rgba(0,0,0,0.25)'; };
+                    btn.onmouseleave = function() { this.style.transform='none'; this.style.boxShadow='0 1px 3px rgba(0,0,0,0.15)'; };
                     btn.dataset.port = portNum;
                     btn.dataset.inIdx = inIdx;
                     btn.onclick = () => selectFromPort(portNum, inIdx);
@@ -247,7 +243,7 @@
                             const dcBadge = document.createElement('span');
                             dcBadge.className = 'wm-namelabel';
                             dcBadge.dataset.tube = `in-${inIdx}-${tubeNum}`;
-                            dcBadge.style.cssText = `font-size:11px; padding:2px 7px; border-radius:10px; margin-right:4px; background:#546e7a; color:white; white-space:nowrap; font-weight:bold; flex-shrink:0;`;
+                            dcBadge.style.cssText = `font-size:10px; padding:2px 8px; border-radius:10px; margin-right:4px; background:#475569; color:white; white-space:nowrap; font-weight:600; flex-shrink:0; display:none;`;
                             if (dcInfo) {
                                 const parts = [dcInfo.dcName, dcInfo.ofdName, `${dcInfo.portNum}번`].filter(Boolean);
                                 dcBadge.textContent = parts.join(' ');
@@ -258,7 +254,7 @@
                         }
                         const badge = document.createElement('span');
                         const badgeColor = outLineColors[crossNodeIndex % outLineColors.length];
-                        badge.style.cssText = `font-size:11px; padding:2px 7px; border-radius:10px; margin-right:6px; background:${badgeColor}; color:white; white-space:nowrap; font-weight:bold; flex-shrink:0;`;
+                        badge.style.cssText = `font-size:10px; padding:2px 8px; border-radius:10px; margin-right:6px; background:${badgeColor}; color:white; white-space:nowrap; font-weight:600; letter-spacing:0.2px; flex-shrink:0;`;
                         badge.textContent = `→ OUT${crossNodeIndex + 1}`;
                         row.appendChild(badge);
                         row.appendChild(btn);
@@ -333,16 +329,15 @@
                 rightColumn.style.position = 'relative';
                 
                 const rightHeader = document.createElement('div');
-                rightHeader.style.padding = '15px';
-                rightHeader.style.background = outLineColors[nodeIndex % outLineColors.length];
-                rightHeader.style.color = 'white';
-                rightHeader.style.fontWeight = 'bold';
-                rightHeader.style.textAlign = 'center';
-                rightHeader.style.borderRadius = '5px 5px 0 0';
-                rightHeader.style.fontSize = '16px';
-                
+                rightHeader.style.cssText = `padding:12px 16px; background:#475569; color:white; font-weight:700; text-align:center; border-radius:8px 8px 0 0; font-size:14px; display:flex; align-items:center; justify-content:center; gap:8px;`;
+
+                const outTag = document.createElement('span');
+                outTag.style.cssText = 'background:rgba(255,255,255,0.2);padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;letter-spacing:0.5px;';
+                const outLabel = currentWireMapToNodes.length > 1 ? `OUT${nodeIndex + 1}` : 'OUT';
+                outTag.textContent = outLabel;
+                rightHeader.appendChild(outTag);
                 const headerText = document.createElement('span');
-                headerText.textContent = `OUT: ${toNode.name || '이름 없음'}`;
+                headerText.textContent = toNode.name || '이름 없음';
                 rightHeader.appendChild(headerText);
                 rightColumn.appendChild(rightHeader);
                 
@@ -361,17 +356,18 @@
                     if (nodeIndex < currentWireMapToNodes.length - 1) {
                         const downBtn = document.createElement('button');
                         downBtn.textContent = '⬇ 아래로';
-                        downBtn.style.cssText = 'padding:4px 8px; background:#9b59b6; color:white; border:none; border-radius:4px; cursor:pointer; font-size:11px; font-weight:bold;';
+                        downBtn.style.cssText = 'padding:4px 8px; background:#8b5cf6; color:white; border:none; border-radius:6px; cursor:pointer; font-size:11px; font-weight:600;';
                         downBtn.onclick = () => swapDownstreamNodes(nodeIndex, nodeIndex + 1);
                         toolbar.appendChild(downBtn);
                     }
                 }
                 
                 const rightList = document.createElement('div');
-                rightList.style.border = '3px solid #e74c3c';
+                rightList.style.border = '2px solid #64748b';
                 rightList.style.borderTop = 'none';
-                rightList.style.borderRadius = '0 0 5px 5px';
+                rightList.style.borderRadius = '0 0 8px 8px';
                 rightList.style.background = 'white';
+                rightList.style.overflow = 'hidden';
                 
                 // 후단 포트 버튼들 (튜브 색상 + 코어 색상)
                 for (let i = 0; i < connection.cores; i++) {
@@ -387,7 +383,7 @@
                     if ((portNum - 1) % 12 === 0) {
                         const end = Math.min(portNum + 11, connection.cores);
                         const tubeLabel = document.createElement('div');
-                        tubeLabel.style.cssText = `padding:3px 10px; background:${tc.bg}; font-size:11px; font-weight:bold; color:${tc.text}; border-top:2px solid ${tc.border}; border-bottom:1px solid ${tc.border}; display:flex; align-items:center; gap:8px;`;
+                        tubeLabel.style.cssText = `padding:4px 12px; background:${tc.bg}; font-size:11px; font-weight:700; color:${tc.text}; border-top:2px solid ${tc.border}; border-bottom:1px solid ${tc.border}; display:flex; align-items:center; gap:8px; letter-spacing:0.2px;`;
                         const tubeBtn = document.createElement('button');
                         tubeBtn.id = `out-tube-${nodeIndex}-${tubeNum}`;
                         tubeBtn.dataset.nodeIndex = nodeIndex;
@@ -396,7 +392,7 @@
                         tubeBtn.dataset.endPort = end;
                         tubeBtn.className = 'tube-select-btn out-tube-btn';
                         tubeBtn.textContent = '튜브 선택';
-                        tubeBtn.style.cssText = `padding:2px 8px; background:rgba(0,0,0,0.15); color:${tc.text}; border:1px solid ${tc.border}; border-radius:4px; font-size:10px; font-weight:bold; cursor:pointer; flex-shrink:0;`;
+                        tubeBtn.style.cssText = `padding:2px 8px; background:rgba(0,0,0,0.08); color:${tc.text}; border:1px solid rgba(0,0,0,0.08); border-radius:4px; font-size:10px; font-weight:600; cursor:pointer; flex-shrink:0; transition:background 0.15s;`;
                         tubeBtn.onclick = (e) => { e.stopPropagation(); selectOutTube(nodeIndex, tubeNum, portNum, end); };
                         tubeLabel.appendChild(tubeBtn);
                         const tubeText = document.createElement('span');
@@ -406,20 +402,22 @@
                     }
 
                     const row = document.createElement('div');
-                    row.style.cssText = `display:flex; align-items:center; padding:6px 10px; border-bottom:1px solid ${tc.border}22; min-height:44px; background:${tc.bg};`;
+                    row.style.cssText = `display:flex; align-items:center; padding:5px 10px; border-bottom:1px solid ${tc.border}18; min-height:40px; background:${tc.bg};`;
 
                     const btn = document.createElement('button');
                     btn.id = `to-${nodeIndex}-${portNum}`;
                     btn.className = 'port-btn to-port';
                     btn.textContent = portNum;
-                    btn.style.cssText = `padding:5px 12px; border:2px solid ${coreColor}; border-radius:6px; cursor:pointer; background:${coreColor}; color:${textColor}; font-weight:bold; font-size:13px; min-width:44px;`;
+                    btn.style.cssText = `padding:4px 10px; border:none; border-radius:6px; cursor:pointer; background:${coreColor}; color:${textColor}; font-weight:700; font-size:12px; min-width:40px; box-shadow:0 1px 3px rgba(0,0,0,0.15); transition:transform 0.1s,box-shadow 0.1s;`;
+                    btn.onmouseenter = function() { this.style.transform='scale(1.08)'; this.style.boxShadow='0 2px 6px rgba(0,0,0,0.25)'; };
+                    btn.onmouseleave = function() { this.style.transform='none'; this.style.boxShadow='0 1px 3px rgba(0,0,0,0.15)'; };
                     btn.dataset.port = portNum;
                     btn.dataset.nodeIndex = nodeIndex;
                     btn.onclick = () => selectToPort(portNum, nodeIndex);
 
                     const labelSpan = document.createElement('span');
-                    labelSpan.style.cssText = 'flex:1; margin-left:10px; font-size:13px;';
-                    labelSpan.innerHTML = `<strong style="font-size:15px;">${portNum}</strong> ${escapeHtml(downstreamLabel)}`;
+                    labelSpan.style.cssText = 'flex:1; margin-left:10px; font-size:12.5px; color:#334155;';
+                    labelSpan.innerHTML = `<strong style="font-size:14px;font-weight:700;color:#1e293b;">${portNum}</strong> ${escapeHtml(downstreamLabel)}`;
 
                     row.appendChild(btn);
                     row.appendChild(labelSpan);
@@ -1388,7 +1386,341 @@
         }
 
         // ==================== RN 함수 끝 ====================
-        
+
+        // ==================== PDF 출력 ====================
+        async function exportWireMapPDF() {
+            if (!selectedNode || !currentWireMapUpstreamConns.length) {
+                showStatus('직선도 데이터가 없습니다');
+                return;
+            }
+
+            showStatus('PDF 생성 중...');
+
+            if (!window.jspdf || !window.jspdf.jsPDF) {
+                showStatus('PDF 라이브러리가 로드되지 않았습니다. 페이지를 새로고침 해주세요.');
+                return;
+            }
+            var jsPDF = window.jspdf.jsPDF;
+            // A4 세로: 210×297mm
+            var pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+            var pageW = 210, pageH = 297;
+            var margin = 6;
+            var contentW = pageW - margin * 2;
+            var contentH = pageH - margin * 2;
+
+            // IN 기준 최대 코어수
+            var upConns = currentWireMapUpstreamConns;
+            var upNodes = currentWireMapUpstreamNodes;
+            var maxCores = upConns[0] ? upConns[0].cores : 0;
+            var totalTubes = Math.ceil(maxCores / 12);
+            var tubesPerPage = 2;
+            var totalPages = Math.ceil(totalTubes / tubesPerPage);
+
+            // 히든 렌더 컨테이너 (A4 세로 비율)
+            var renderBox = document.createElement('div');
+            renderBox.id = '_pdfRenderBox';
+            renderBox.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:794px;background:white;font-family:sans-serif;';
+            document.body.appendChild(renderBox);
+
+            // 현재 직선도의 OUT 데이터 미리 계산 (첫 번째 OUT만)
+            var outConn = currentWireMapConnections[0];
+            var outNode = currentWireMapToNodes[0];
+            var _outLabels = [];
+            if (outConn && outNode) {
+                var _downConn = connections.find(function(c) { return isInConn(c, outNode.id); });
+                _outLabels = getNodePortData(outNode, null, _downConn || outConn);
+                if (outNode.type === 'datacenter' && _outLabels.every(function(l) { return !l; })) {
+                    if (outConn.portMapping && outConn.portMapping.length > 0) {
+                        var mapped = new Array(outConn.cores).fill('');
+                        outConn.portMapping.forEach(function(m) {
+                            var fromLabels = getNodePortData(selectedNode, null, null);
+                            mapped[m[1] - 1] = fromLabels[m[0] - 1] || '';
+                        });
+                        if (mapped.some(function(l) { return l; })) _outLabels = mapped;
+                    }
+                }
+            }
+
+            try {
+                for (var page = 0; page < totalPages; page++) {
+                    var startTube = page * tubesPerPage + 1;
+                    var endTube = Math.min(startTube + tubesPerPage - 1, totalTubes);
+                    var startPort = (startTube - 1) * 12 + 1;
+                    var endPort = Math.min(endTube * 12, maxCores);
+
+                    renderBox.innerHTML = '';
+
+                    // 페이지 제목
+                    var titleDiv = document.createElement('div');
+                    titleDiv.style.cssText = 'padding:8px 14px;font-size:15px;font-weight:700;color:#1e293b;border-bottom:2px solid #1a6fd4;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;';
+                    titleDiv.innerHTML = '<span>' + escapeHtml(selectedNode.name || '장비') + ' 직선도</span>' +
+                        '<span style="font-size:11px;font-weight:500;color:#64748b;">튜브 ' + startTube + '~' + endTube + ' (' + startPort + '~' + endPort + '번) | ' + (page + 1) + '/' + totalPages + '</span>';
+                    renderBox.appendChild(titleDiv);
+
+                    // 좌우 컨테이너
+                    var row = document.createElement('div');
+                    row.style.cssText = 'display:flex;gap:60px;position:relative;';
+
+                    // === IN 컬럼 (첫 번째 IN만) ===
+                    var inCol = document.createElement('div');
+                    inCol.style.cssText = 'flex:1;position:relative;z-index:1;';
+
+                    var upConn = upConns[0];
+                    var upNode = upNodes[0];
+                    var inTag = upConns.length > 1 ? 'IN1' : 'IN';
+                    var inColor = '#1a6fd4';
+
+                    var inBlock = document.createElement('div');
+                    var hdr = document.createElement('div');
+                    hdr.style.cssText = 'padding:7px 10px;background:' + inColor + ';color:white;font-weight:700;font-size:12px;border-radius:5px 5px 0 0;text-align:center;';
+                    hdr.innerHTML = '<span style="background:rgba(255,255,255,0.2);padding:1px 5px;border-radius:3px;font-size:9px;margin-right:5px;">' + inTag + '</span>' + escapeHtml(upNode ? upNode.name || '' : '');
+                    inBlock.appendChild(hdr);
+
+                    var inList = document.createElement('div');
+                    inList.style.cssText = 'border:1.5px solid ' + inColor + ';border-top:none;border-radius:0 0 5px 5px;overflow:hidden;background:white;';
+
+                    var thisUpPorts = getNodePortData(upNode, null, upConn);
+
+                    for (var i = startPort - 1; i < endPort; i++) {
+                        var portNum = i + 1;
+                        var tubeNum = Math.ceil(portNum / 12);
+                        var coreIdx = (portNum - 1) % 12;
+                        var tc = wireMapTubeColors[(tubeNum - 1) % 12];
+                        var coreColor = wireMapCoreColors[coreIdx];
+                        var textColor = [8, 9, 10, 11].includes(coreIdx) ? '#333' : 'white';
+
+                        if ((portNum - 1) % 12 === 0) {
+                            var tubeEnd = Math.min(portNum + 11, maxCores);
+                            var tl = document.createElement('div');
+                            tl.style.cssText = 'padding:2px 8px;background:' + tc.bg + ';font-size:9px;font-weight:700;color:' + tc.text + ';border-top:1.5px solid ' + tc.border + ';border-bottom:1px solid ' + tc.border + ';';
+                            tl.textContent = '튜브 ' + tubeNum + ' ' + tc.name + ' (' + portNum + '~' + tubeEnd + '번)';
+                            inList.appendChild(tl);
+                        }
+
+                        // 라벨 계산
+                        var label = '';
+                        var isPortMapped = upConn && upConn.portMapping && upConn.portMapping.some(function(m) { return m[1] === portNum; });
+                        if (isPortMapped && upConn.portMapping) {
+                            var mappingEntry = upConn.portMapping.find(function(m) { return m[1] === portNum; });
+                            var rn = mappingEntry && upNode && upNode.rns && upNode.rns.find(function(r) { return r.port === mappingEntry[0]; });
+                            if (rn) {
+                                var slotInfo = rn.outputs ? rn.outputs.find(function(o) { return o.port === portNum; }) : null;
+                                if (slotInfo) label = (thisUpPorts[mappingEntry[0] - 1] || '') + '(' + (upNode ? upNode.name : '') + ' ' + rn.type + 'RN-' + slotInfo.slotNum + ')';
+                            } else if (mappingEntry) {
+                                label = thisUpPorts[mappingEntry[0] - 1] || '';
+                            }
+                        } else {
+                            label = thisUpPorts[i] || '';
+                        }
+
+                        // OUT 뱃지 확인
+                        var crossNodeIndex = -1;
+                        currentWireMapConnections.forEach(function(conn, ni) {
+                            var matchesIn = conn.inFromCableId ? conn.inFromCableId === upConn.id : true;
+                            if (conn.portMapping && matchesIn && conn.portMapping.some(function(m) { return m[0] === portNum; })) crossNodeIndex = ni;
+                        });
+
+                        var pRow = document.createElement('div');
+                        pRow.className = 'pdf-in-row';
+                        pRow.dataset.port = portNum;
+                        pRow.style.cssText = 'display:flex;align-items:center;padding:2px 6px;min-height:28px;background:' + tc.bg + ';border-bottom:1px solid ' + tc.border + '18;font-size:10px;';
+
+                        var lbl = document.createElement('span');
+                        lbl.style.cssText = 'flex:1;color:#334155;';
+                        var rnInfo = selectedNode.rns ? selectedNode.rns.find(function(r) { return r.port === portNum; }) : null;
+                        lbl.innerHTML = '<strong style="font-size:11px;font-weight:700;color:#1e293b;">' + portNum + '</strong> ' + escapeHtml(label);
+                        if (rnInfo) lbl.innerHTML += ' <span style="font-size:8px;color:#7c3aed;font-weight:600;">(' + selectedNode.name + ' ' + rnInfo.type + 'RN)</span>';
+                        pRow.appendChild(lbl);
+
+                        // OFD 선번 뱃지 (이름표 ON 상태인 튜브만)
+                        if (crossNodeIndex >= 0) {
+                            var labelToggleBtn = document.querySelector('#inList-0 button[data-show][title="이름표 ON/OFF"]');
+                            // 튜브별 토글 찾기
+                            var allToggles = document.querySelectorAll('#inList-0 button[data-show][title="이름표 ON/OFF"]');
+                            var thisTubeToggle = allToggles[tubeNum - 1];
+                            var isLabelOn = thisTubeToggle && thisTubeToggle.dataset.show === '1';
+
+                            if (isLabelOn) {
+                                var dcInfo = getDcInfo(selectedNode, portNum);
+                                if (dcInfo) {
+                                    var dcBadge = document.createElement('span');
+                                    dcBadge.style.cssText = 'font-size:7.5px;padding:1px 5px;border-radius:6px;background:#475569;color:white;font-weight:600;margin-right:2px;white-space:nowrap;';
+                                    var parts = [dcInfo.dcName, dcInfo.ofdName, dcInfo.portNum + '번'].filter(Boolean);
+                                    dcBadge.textContent = parts.join(' ');
+                                    pRow.appendChild(dcBadge);
+                                }
+                            }
+
+                            var badge = document.createElement('span');
+                            var badgeColor = outLineColors[crossNodeIndex % outLineColors.length];
+                            badge.style.cssText = 'font-size:8px;padding:1px 5px;border-radius:6px;background:' + badgeColor + ';color:white;font-weight:600;margin-right:3px;white-space:nowrap;';
+                            badge.textContent = '→OUT' + (crossNodeIndex + 1);
+                            pRow.appendChild(badge);
+                        }
+
+                        var cBtn = document.createElement('span');
+                        cBtn.className = 'pdf-in-btn';
+                        cBtn.dataset.port = portNum;
+                        cBtn.style.cssText = 'display:inline-block;width:26px;height:19px;border-radius:3px;background:' + coreColor + ';color:' + textColor + ';font-weight:700;font-size:9px;text-align:center;line-height:19px;flex-shrink:0;';
+                        cBtn.textContent = portNum;
+                        pRow.appendChild(cBtn);
+
+                        inList.appendChild(pRow);
+                    }
+
+                    inBlock.appendChild(inList);
+                    inCol.appendChild(inBlock);
+                    row.appendChild(inCol);
+
+                    // === OUT 컬럼 (첫 번째 OUT만, OUT 자체 코어수까지만) ===
+                    var outMaxPort = outConn ? Math.min(endPort, outConn.cores) : 0;
+                    var outStartPort = Math.min(startPort, outMaxPort + 1);
+
+                    if (outConn && outNode && outStartPort <= outMaxPort) {
+                        var outColDiv = document.createElement('div');
+                        outColDiv.style.cssText = 'flex:1;position:relative;z-index:1;';
+
+                        var outBlock = document.createElement('div');
+                        var outHdr = document.createElement('div');
+                        outHdr.style.cssText = 'padding:7px 10px;background:#475569;color:white;font-weight:700;font-size:12px;border-radius:5px 5px 0 0;text-align:center;';
+                        var outTagLabel = currentWireMapToNodes.length > 1 ? 'OUT1' : 'OUT';
+                        outHdr.innerHTML = '<span style="background:rgba(255,255,255,0.2);padding:1px 5px;border-radius:3px;font-size:9px;margin-right:5px;">' + outTagLabel + '</span>' + escapeHtml(outNode.name || '이름 없음');
+                        outBlock.appendChild(outHdr);
+
+                        var outList = document.createElement('div');
+                        outList.style.cssText = 'border:1.5px solid #64748b;border-top:none;border-radius:0 0 5px 5px;overflow:hidden;background:white;';
+
+                        for (var i = outStartPort - 1; i < outMaxPort; i++) {
+                            var portNum = i + 1;
+                            var tubeNum = Math.ceil(portNum / 12);
+                            var coreIdx = (portNum - 1) % 12;
+                            var tc = wireMapTubeColors[(tubeNum - 1) % 12];
+                            var coreColor = wireMapCoreColors[coreIdx];
+                            var textColor = [8, 9, 10, 11].includes(coreIdx) ? '#333' : 'white';
+
+                            if ((portNum - 1) % 12 === 0) {
+                                var tubeEnd = Math.min(portNum + 11, outConn.cores);
+                                var tl = document.createElement('div');
+                                tl.style.cssText = 'padding:2px 8px;background:' + tc.bg + ';font-size:9px;font-weight:700;color:' + tc.text + ';border-top:1.5px solid ' + tc.border + ';border-bottom:1px solid ' + tc.border + ';';
+                                tl.textContent = '튜브 ' + tubeNum + ' ' + tc.name + ' (' + portNum + '~' + tubeEnd + '번)';
+                                outList.appendChild(tl);
+                            }
+
+                            var downLabel = (portNum <= _outLabels.length) ? (_outLabels[portNum - 1] || '') : '';
+
+                            var pRow = document.createElement('div');
+                            pRow.className = 'pdf-out-row';
+                            pRow.dataset.port = portNum;
+                            pRow.style.cssText = 'display:flex;align-items:center;padding:2px 6px;min-height:28px;background:' + tc.bg + ';border-bottom:1px solid ' + tc.border + '18;font-size:10px;';
+
+                            var cBtn = document.createElement('span');
+                            cBtn.className = 'pdf-out-btn';
+                            cBtn.dataset.port = portNum;
+                            cBtn.style.cssText = 'display:inline-block;width:26px;height:19px;border-radius:3px;background:' + coreColor + ';color:' + textColor + ';font-weight:700;font-size:9px;text-align:center;line-height:19px;flex-shrink:0;';
+                            cBtn.textContent = portNum;
+                            pRow.appendChild(cBtn);
+
+                            var lbl = document.createElement('span');
+                            lbl.style.cssText = 'flex:1;margin-left:6px;color:#334155;';
+                            lbl.innerHTML = '<strong style="font-size:11px;font-weight:700;color:#1e293b;">' + portNum + '</strong> ' + escapeHtml(downLabel);
+                            pRow.appendChild(lbl);
+
+                            outList.appendChild(pRow);
+                        }
+
+                        outBlock.appendChild(outList);
+                        outColDiv.appendChild(outBlock);
+                        row.appendChild(outColDiv);
+                    } else if (outConn && outNode && startPort > outConn.cores) {
+                        // OUT 포트 범위 초과 페이지: 빈 OUT 컬럼 (IN만 있는 페이지)
+                        var outColDiv = document.createElement('div');
+                        outColDiv.style.cssText = 'flex:1;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:12px;';
+                        outColDiv.textContent = outNode.name + ' (' + outConn.cores + '코어) 범위 초과';
+                        row.appendChild(outColDiv);
+                    }
+
+                    renderBox.appendChild(row);
+
+                    // === 연결선 SVG 그리기 (DOM 렌더 후) ===
+                    // row를 relative로 설정하고 SVG 오버레이
+                    row.style.position = 'relative';
+                    var svgNS = 'http://www.w3.org/2000/svg';
+                    var connSvg = document.createElementNS(svgNS, 'svg');
+                    connSvg.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:5;overflow:visible;';
+                    row.appendChild(connSvg);
+
+                    // DOM 레이아웃 반영 대기
+                    await new Promise(function(r) { setTimeout(r, 50); });
+
+                    // portMapping에서 이 페이지 범위 내 연결선 그리기
+                    if (outConn && outConn.portMapping) {
+                        var rowRect = row.getBoundingClientRect();
+                        outConn.portMapping.forEach(function(m) {
+                            var fromPort = m[0], toPort = m[1];
+                            if (fromPort < startPort || fromPort > endPort) return;
+                            if (toPort < outStartPort || toPort > outMaxPort) return;
+
+                            var fromBtn = row.querySelector('.pdf-in-btn[data-port="' + fromPort + '"]');
+                            var toBtn = row.querySelector('.pdf-out-btn[data-port="' + toPort + '"]');
+                            if (!fromBtn || !toBtn) return;
+
+                            var fRect = fromBtn.getBoundingClientRect();
+                            var tRect = toBtn.getBoundingClientRect();
+
+                            var x1 = fRect.right - rowRect.left;
+                            var y1 = fRect.top + fRect.height / 2 - rowRect.top;
+                            var x2 = tRect.left - rowRect.left;
+                            var y2 = tRect.top + tRect.height / 2 - rowRect.top;
+
+                            var line = document.createElementNS(svgNS, 'line');
+                            line.setAttribute('x1', x1);
+                            line.setAttribute('y1', y1);
+                            line.setAttribute('x2', x2);
+                            line.setAttribute('y2', y2);
+                            line.setAttribute('stroke', '#e67e22');
+                            line.setAttribute('stroke-width', '2');
+                            line.setAttribute('opacity', '0.75');
+                            connSvg.appendChild(line);
+                        });
+                    }
+
+                    // html2canvas 캡처
+                    var canvas = await html2canvas(renderBox, {
+                        scale: 2,
+                        useCORS: true,
+                        backgroundColor: '#ffffff',
+                        width: 794,
+                        windowWidth: 794
+                    });
+
+                    if (page > 0) pdf.addPage();
+
+                    var imgData = canvas.toDataURL('image/png');
+                    var imgW = contentW;
+                    var imgH = canvas.height * contentW / canvas.width;
+                    if (imgH > contentH) {
+                        imgH = contentH;
+                        imgW = canvas.width * contentH / canvas.height;
+                    }
+                    var x = margin + (contentW - imgW) / 2;
+                    var y = margin;
+                    pdf.addImage(imgData, 'PNG', x, y, imgW, imgH);
+                }
+
+                var fileName = (selectedNode.name || '직선도') + '_직선도.pdf';
+                pdf.save(fileName);
+                showStatus('PDF 저장 완료: ' + fileName);
+
+            } catch (err) {
+                console.error('PDF 생성 오류:', err);
+                showStatus('PDF 생성 중 오류가 발생했습니다');
+            } finally {
+                document.body.removeChild(renderBox);
+            }
+        }
+
+        // ==================== PDF 출력 끝 ====================
+
         // 케이블 코어 수 변경 - 모달 열기
         let _coreChangeConnId = null;
         function changeCoreCount(connectionId) {
@@ -1591,17 +1923,17 @@
                     if ((i - 1) % 12 === 0) {
                         const end = Math.min(i + 11, 72);
                         const tubeLabel = document.createElement('div');
-                        tubeLabel.style.cssText = 'padding:4px 10px; background:#f5f5f5; font-size:11px; font-weight:bold; color:#555; border-top:2px solid #bbb; border-bottom:1px solid #ddd; letter-spacing:0.5px;';
+                        tubeLabel.style.cssText = 'padding:4px 12px; background:#f5f5f5; font-size:11px; font-weight:700; color:#555; border-top:2px solid #bbb; border-bottom:1px solid #ddd; letter-spacing:0.2px;';
                         tubeLabel.textContent = `튜브 ${tubeNum}  (${i}~${end}번)`;
                         portList.appendChild(tubeLabel);
                     }
 
                     const row = document.createElement('div');
-                    row.style.cssText = `display:flex; align-items:center; padding:6px 10px; border-bottom:${i % 12 === 0 || i === 72 ? 'none' : '1px solid #eee'}; min-height:44px;`;
+                    row.style.cssText = `display:flex; align-items:center; padding:5px 10px; border-bottom:${i % 12 === 0 || i === 72 ? 'none' : '1px solid #eee'}; min-height:40px;`;
 
                     const labelSpan = document.createElement('span');
-                    labelSpan.style.cssText = 'flex:1; font-size:13px; color:#555;';
-                    labelSpan.innerHTML = `<strong style="font-size:15px;">${i}</strong> ${escapeHtml(port?.label || '')}`;
+                    labelSpan.style.cssText = 'flex:1; font-size:12.5px; color:#334155;';
+                    labelSpan.innerHTML = `<strong style="font-size:14px;font-weight:700;color:#1e293b;">${i}</strong> ${escapeHtml(port?.label || '')}`;
 
                     const btn = document.createElement('button');
                     btn.id = `ofd-${ofdIdx}-${i}`;
@@ -1609,7 +1941,7 @@
                     btn.dataset.ofdIdx = ofdIdx;
                     btn.dataset.portNum = i;
                     btn.textContent = i;
-                    btn.style.cssText = `padding:5px 12px; border:2px solid ${isConnected ? '#3498db' : '#95a5a6'}; border-radius:6px; cursor:pointer; background:${isConnected ? '#3498db' : '#95a5a6'}; color:white; font-weight:bold; font-size:13px; min-width:44px;`;
+                    btn.style.cssText = `padding:4px 10px; border:none; border-radius:6px; cursor:pointer; background:${isConnected ? '#3498db' : '#95a5a6'}; color:white; font-weight:700; font-size:12px; min-width:40px; box-shadow:0 1px 3px rgba(0,0,0,0.15); transition:transform 0.1s;`;
                     btn.onclick = () => selectOFDPort(ofdIdx, i, ofd);
 
                     if (isConnected) {
@@ -1634,12 +1966,12 @@
 
             // ── 우측: 케이블 컬럼 ──
             const rightColumn = document.createElement('div');
-            rightColumn.style.cssText = 'flex:1; border:3px solid #e74c3c; border-radius:5px; overflow:hidden; position:relative; z-index:2;';
+            rightColumn.style.cssText = 'flex:1; border:2px solid #64748b; border-radius:8px; overflow:hidden; position:relative; z-index:2;';
 
             const rightHeader = document.createElement('div');
-            rightHeader.style.cssText = 'padding:0 15px; background:#e74c3c; color:white; font-weight:bold; font-size:15px; height:52px; display:flex; justify-content:space-between; align-items:center;';
+            rightHeader.style.cssText = 'padding:0 16px; background:#475569; color:white; font-weight:700; font-size:14px; height:48px; display:flex; justify-content:space-between; align-items:center;';
             rightHeader.innerHTML = `<span>${cable.cores}C 케이블</span>
-                <button onclick="autoCableMapping()" style="padding:5px 12px; background:white; color:#e74c3c; border:none; border-radius:5px; cursor:pointer; font-weight:bold; font-size:13px;">⚡ 순서대로 연결</button>`;
+                <button onclick="autoCableMapping()" style="padding:5px 12px; background:rgba(255,255,255,0.15); color:white; border:1px solid rgba(255,255,255,0.25); border-radius:6px; cursor:pointer; font-weight:600; font-size:12px; transition:background 0.15s;" onmouseover="this.style.background='rgba(255,255,255,0.25)'" onmouseout="this.style.background='rgba(255,255,255,0.15)'">⚡ 순서대로 연결</button>`;
             rightColumn.appendChild(rightHeader);
 
             const cableList = document.createElement('div');
@@ -1674,13 +2006,13 @@
                         spacer.dataset.ofdIdx = Math.floor((i - 1) / 72); // 몇 번째 경계인지
                         cableList.appendChild(spacer);
                     }
-                    tubeLabel.style.cssText = `padding:4px 10px; background:${tc.bg}; font-size:11px; font-weight:bold; color:${tc.text}; border-top:2px solid ${tc.border}; border-bottom:1px solid ${tc.border}; letter-spacing:0.5px;`;
+                    tubeLabel.style.cssText = `padding:4px 12px; background:${tc.bg}; font-size:11px; font-weight:700; color:${tc.text}; border-top:2px solid ${tc.border}; border-bottom:1px solid ${tc.border}; letter-spacing:0.2px;`;
                     tubeLabel.textContent = `튜브 ${tubeNum} ${tc.name}  (${i}~${end}번)`;
                     cableList.appendChild(tubeLabel);
                 }
 
                 const row = document.createElement('div');
-                row.style.cssText = `display:flex; align-items:center; padding:6px 10px; border-bottom:${i % 12 === 0 || i === cable.cores ? 'none' : `1px solid ${tc.border}33`}; min-height:44px; background:${tc.bg};`;
+                row.style.cssText = `display:flex; align-items:center; padding:5px 10px; border-bottom:${i % 12 === 0 || i === cable.cores ? 'none' : `1px solid ${tc.border}18`}; min-height:40px; background:${tc.bg};`;
 
                 const btn = document.createElement('button');
                 btn.id = `cable-port-${i}`;
@@ -1692,11 +2024,13 @@
                 const coreColor = wireMapCoreColors[coreIdx];
                 const textColor = [8,9,10,11].includes(coreIdx) ? '#333' : 'white';
 
-                btn.style.cssText = `padding:5px 12px; border:2px solid ${coreColor}; border-radius:6px; cursor:pointer; background:${coreColor}; color:${textColor}; font-weight:bold; font-size:13px; min-width:44px;`;
+                btn.style.cssText = `padding:4px 10px; border:none; border-radius:6px; cursor:pointer; background:${coreColor}; color:${textColor}; font-weight:700; font-size:12px; min-width:40px; box-shadow:0 1px 3px rgba(0,0,0,0.15); transition:transform 0.1s,box-shadow 0.1s;`;
+                btn.onmouseenter = function() { this.style.transform='scale(1.08)'; this.style.boxShadow='0 2px 6px rgba(0,0,0,0.25)'; };
+                btn.onmouseleave = function() { this.style.transform='none'; this.style.boxShadow='0 1px 3px rgba(0,0,0,0.15)'; };
                 btn.onclick = () => selectCablePort(i);
 
                 const labelSpan = document.createElement('span');
-                labelSpan.style.cssText = 'flex:1; font-size:13px; color:#555; margin-left:8px;';
+                labelSpan.style.cssText = 'flex:1; font-size:12.5px; color:#334155; margin-left:8px;';
 
                 if (isUsed) {
                     const u = isUsed;

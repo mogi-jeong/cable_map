@@ -6,19 +6,27 @@
                 subscriber: '가입자',
                 cctv: 'CCTV'
             };
-            
-            document.getElementById('nodeInfoTitle').textContent = typeNames[selectedNode.type] + ' 정보';
+            const typeIcons = {
+                datacenter: '<svg width="18" height="18" viewBox="0 0 20 20" fill="none"><rect x="3" y="2" width="14" height="16" rx="2" stroke="#1a6fd4" stroke-width="1.8"/><circle cx="10" cy="7" r="1.5" fill="#1a6fd4"/><line x1="6" y1="11" x2="14" y2="11" stroke="#1a6fd4" stroke-width="1.2"/><line x1="6" y1="14" x2="14" y2="14" stroke="#1a6fd4" stroke-width="1.2"/></svg>',
+                junction: '<svg width="18" height="18" viewBox="0 0 20 20" fill="none"><polygon points="10,10 3,5 3,15" fill="#1a6fd4"/><polygon points="10,10 17,5 17,15" fill="#1a6fd4"/><circle cx="10" cy="10" r="8" stroke="#1a6fd4" stroke-width="1.8" fill="none"/></svg>',
+                onu: '<svg width="18" height="18" viewBox="0 0 20 20" fill="none"><rect x="2" y="6" width="16" height="8" rx="2" stroke="#1a6fd4" stroke-width="1.8"/><circle cx="6" cy="10" r="1.5" fill="#1a6fd4"/><line x1="10" y1="8" x2="10" y2="12" stroke="#1a6fd4" stroke-width="1.2"/><line x1="13" y1="8" x2="13" y2="12" stroke="#1a6fd4" stroke-width="1.2"/></svg>',
+                subscriber: '<svg width="18" height="18" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="6" r="3.5" stroke="#1a6fd4" stroke-width="1.8"/><path d="M3 17c0-3.9 3.1-7 7-7s7 3.1 7 7" stroke="#1a6fd4" stroke-width="1.8" fill="none"/></svg>',
+                cctv: '<svg width="18" height="18" viewBox="0 0 20 20" fill="none"><rect x="2" y="5" width="12" height="9" rx="2" stroke="#1a6fd4" stroke-width="1.8"/><path d="M14 8l4-2v7l-4-2" stroke="#1a6fd4" stroke-width="1.8" fill="none"/></svg>'
+            };
+
+            var titleEl = document.getElementById('nodeInfoTitle');
+            titleEl.innerHTML = (typeIcons[selectedNode.type] || '') + ' ' + (typeNames[selectedNode.type] || '장비') + ' 정보';
             document.getElementById('nodeName').value = selectedNode.name || '';
             document.getElementById('nodeMemo').value = selectedNode.memo || '';
-            
+
             // 연결 목록 표시
             const connectionsList = document.getElementById('connectionsList');
             connectionsList.innerHTML = '';
-            
+
             const nodeConnections = getNodeConns(selectedNode.id);
-            
+
             if (nodeConnections.length === 0) {
-                connectionsList.innerHTML = '<p style="color: #999;">연결된 장비가 없습니다</p>';
+                connectionsList.innerHTML = '<div style="text-align:center;padding:16px 0;color:#94a3b8;font-size:12.5px;">연결된 장비가 없습니다</div>';
             } else {
                 const canToggle = selectedNode.type !== 'datacenter' && nodeConnections.length >= 2;
 
@@ -32,6 +40,10 @@
                     ...inConnsRaw.filter(c => !inOrder.includes(c.id))
                 ];
 
+                // 방향 색상 (블루 컨셉 통일)
+                var inColor = '#0d9488';   // teal
+                var outBaseColor = '#1a6fd4'; // blue
+
                 // IN 먼저, OUT 순서대로
                 [...inConns, ...outConns].forEach(conn => {
                     const otherNodeId = getOtherNodeId(conn, selectedNode.id);
@@ -39,13 +51,12 @@
                     if (!otherNode) return;
 
                     const isIncoming = isInConn(conn, selectedNode.id);
-                    const outIdx = outConns.indexOf(conn); // -1이면 IN
-                    const outNum = outIdx + 1; // OUT1, OUT2, ...
+                    const outIdx = outConns.indexOf(conn);
+                    const outNum = outIdx + 1;
                     const inIdx = inConns.indexOf(conn);
-                    const inNum = inIdx + 1; // IN1, IN2, ...
+                    const inNum = inIdx + 1;
 
-                    // 방향 뱃지
-                    const lineColor = isIncoming ? '#16a085' : outLineColors[outIdx % outLineColors.length];
+                    const lineColor = isIncoming ? inColor : outLineColors[outIdx % outLineColors.length];
                     const dirLabel  = isIncoming ? `IN${inNum}` : `OUT${outNum}`;
 
                     const div = document.createElement('div');
@@ -54,61 +65,95 @@
 
                     // 헤더 행
                     const headerRow = document.createElement('div');
-                    headerRow.style.cssText = 'display:flex; align-items:center; gap:6px; flex-wrap:wrap;';
-
-                    const nameSpan = document.createElement('strong');
-                    nameSpan.textContent = otherNode.name || '이름 없음';
-                    headerRow.appendChild(nameSpan);
+                    headerRow.style.cssText = 'display:flex;align-items:center;gap:6px;flex-wrap:wrap;';
 
                     const dirBadge = document.createElement('span');
-                    dirBadge.style.cssText = `padding:2px 8px; background:${lineColor}; color:white; border-radius:3px; font-size:12px; font-weight:bold;`;
+                    dirBadge.style.cssText = 'padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;letter-spacing:.03em;' +
+                        (isIncoming
+                            ? 'background:rgba(13,148,136,0.12);color:#0d9488;'
+                            : 'background:rgba(26,111,212,0.1);color:#1a6fd4;');
                     dirBadge.textContent = dirLabel;
                     headerRow.appendChild(dirBadge);
 
-                    // IN1 고정 뱃지 / IN2+는 OUT으로 변경 가능
+                    const nameSpan = document.createElement('span');
+                    nameSpan.style.cssText = 'font-size:13px;font-weight:600;color:#1e293b;';
+                    nameSpan.textContent = otherNode.name || '이름 없음';
+                    headerRow.appendChild(nameSpan);
+
+                    div.appendChild(headerRow);
+
+                    // 액션 버튼 행
+                    const actionRow = document.createElement('div');
+                    actionRow.style.cssText = 'display:flex;align-items:center;gap:4px;margin-top:6px;flex-wrap:wrap;';
+
+                    var smallBtnBase = 'padding:3px 8px;border:none;border-radius:4px;font-size:10.5px;font-weight:600;cursor:pointer;transition:filter 0.15s;';
+
+                    // IN/OUT 전환 버튼
                     if (canToggle) {
                         if (isIncoming) {
                             if (inIdx === 0) {
                                 const fixedBadge = document.createElement('span');
-                                fixedBadge.style.cssText = 'padding:2px 8px; background:#95a5a6; color:white; border-radius:3px; font-size:11px;';
+                                fixedBadge.style.cssText = 'padding:3px 8px;background:#f1f5f9;color:#94a3b8;border-radius:4px;font-size:10.5px;font-weight:600;';
                                 fixedBadge.textContent = 'IN1 고정';
-                                headerRow.appendChild(fixedBadge);
+                                actionRow.appendChild(fixedBadge);
                             } else {
                                 const toOutBtn = document.createElement('button');
-                                toOutBtn.style.cssText = 'padding:2px 8px; background:#e67e22; color:white; border:none; border-radius:3px; font-size:11px; cursor:pointer;';
-                                toOutBtn.textContent = '↪ OUT으로 변경';
+                                toOutBtn.style.cssText = smallBtnBase + 'background:rgba(26,111,212,0.1);color:#1a6fd4;';
+                                toOutBtn.textContent = 'OUT으로 변경';
+                                toOutBtn.onmouseover = function(){ this.style.background='rgba(26,111,212,0.18)'; };
+                                toOutBtn.onmouseout = function(){ this.style.background='rgba(26,111,212,0.1)'; };
                                 toOutBtn.onclick = (e) => { e.stopPropagation(); toggleConnToOut(conn.id); };
-                                headerRow.appendChild(toOutBtn);
+                                actionRow.appendChild(toOutBtn);
                             }
                         } else {
                             const toggleBtn = document.createElement('button');
-                            toggleBtn.style.cssText = 'padding:2px 8px; background:#3498db; color:white; border:none; border-radius:3px; font-size:11px; cursor:pointer;';
-                            toggleBtn.textContent = '↩ IN으로 변경';
+                            toggleBtn.style.cssText = smallBtnBase + 'background:rgba(13,148,136,0.1);color:#0d9488;';
+                            toggleBtn.textContent = 'IN으로 변경';
+                            toggleBtn.onmouseover = function(){ this.style.background='rgba(13,148,136,0.18)'; };
+                            toggleBtn.onmouseout = function(){ this.style.background='rgba(13,148,136,0.1)'; };
                             toggleBtn.onclick = (e) => { e.stopPropagation(); toggleConnDirection(conn.id); };
-                            headerRow.appendChild(toggleBtn);
+                            actionRow.appendChild(toggleBtn);
                         }
                     }
 
-                    // OUT 순서 변경 버튼 (OUT이 2개 이상일 때)
+                    // OUT 순서 변경 버튼
                     if (!isIncoming && outConns.length >= 2) {
                         const moveUp = document.createElement('button');
-                        moveUp.style.cssText = 'padding:2px 6px; background:#f39c12; color:white; border:none; border-radius:3px; font-size:11px; cursor:pointer;';
+                        moveUp.style.cssText = smallBtnBase + 'background:#f1f5f9;color:#475569;padding:3px 6px;';
                         moveUp.textContent = '▲';
                         moveUp.disabled = outIdx === 0;
                         moveUp.style.opacity = outIdx === 0 ? '0.3' : '1';
+                        moveUp.onmouseover = function(){ if(!this.disabled) this.style.background='#e2e8f0'; };
+                        moveUp.onmouseout = function(){ this.style.background='#f1f5f9'; };
                         moveUp.onclick = (e) => { e.stopPropagation(); moveOutOrder(conn.id, -1); };
-                        headerRow.appendChild(moveUp);
+                        actionRow.appendChild(moveUp);
 
                         const moveDown = document.createElement('button');
-                        moveDown.style.cssText = 'padding:2px 6px; background:#f39c12; color:white; border:none; border-radius:3px; font-size:11px; cursor:pointer;';
+                        moveDown.style.cssText = smallBtnBase + 'background:#f1f5f9;color:#475569;padding:3px 6px;';
                         moveDown.textContent = '▼';
                         moveDown.disabled = outIdx === outConns.length - 1;
                         moveDown.style.opacity = outIdx === outConns.length - 1 ? '0.3' : '1';
+                        moveDown.onmouseover = function(){ if(!this.disabled) this.style.background='#e2e8f0'; };
+                        moveDown.onmouseout = function(){ this.style.background='#f1f5f9'; };
                         moveDown.onclick = (e) => { e.stopPropagation(); moveOutOrder(conn.id, +1); };
-                        headerRow.appendChild(moveDown);
+                        actionRow.appendChild(moveDown);
                     }
 
-                    div.appendChild(headerRow);
+                    // OTDR 버튼 (OUT 방향만)
+                    if (!isIncoming) {
+                        const otdrBtn = document.createElement('button');
+                        otdrBtn.style.cssText = smallBtnBase + 'background:rgba(124,58,237,0.1);color:#7c3aed;margin-left:auto;';
+                        otdrBtn.textContent = 'OTDR';
+                        otdrBtn.onmouseover = function(){ this.style.background='rgba(124,58,237,0.18)'; };
+                        otdrBtn.onmouseout = function(){ this.style.background='rgba(124,58,237,0.1)'; };
+                        otdrBtn.onclick = (e) => {
+                            e.stopPropagation();
+                            openOtdrInput(selectedNode, conn, dirLabel, otherNode);
+                        };
+                        actionRow.appendChild(otdrBtn);
+                    }
+
+                    if (actionRow.children.length > 0) div.appendChild(actionRow);
 
                     // 케이블 총 거리 계산
                     var totalDist = 0;
@@ -126,26 +171,18 @@
                     }
 
                     const coreRow = document.createElement('div');
-                    coreRow.style.cssText = 'display:flex; align-items:center; gap:8px; margin-top:5px;';
+                    coreRow.style.cssText = 'display:flex;align-items:center;gap:8px;margin-top:6px;';
 
                     const coreSpan = document.createElement('span');
-                    coreSpan.className = 'a-conn-core';
-                    coreSpan.style.margin = '0';
-                    coreSpan.textContent = `${conn.cores} CORES · ${Math.round(totalDist)}m`;
+                    coreSpan.style.cssText = 'font-size:11px;color:#64748b;font-weight:600;letter-spacing:.04em;';
+                    coreSpan.textContent = conn.cores + ' CORES';
+
+                    const distSpan = document.createElement('span');
+                    distSpan.style.cssText = 'font-size:11px;color:#94a3b8;font-weight:500;';
+                    distSpan.textContent = Math.round(totalDist) + 'm';
+
                     coreRow.appendChild(coreSpan);
-
-                    // OTDR 버튼 (OUT 방향만)
-                    if (!isIncoming) {
-                        const otdrBtn = document.createElement('button');
-                        otdrBtn.style.cssText = 'padding:2px 8px; background:#8e44ad; color:white; border:none; border-radius:3px; font-size:11px; cursor:pointer; font-weight:bold;';
-                        otdrBtn.textContent = 'OTDR';
-                        otdrBtn.onclick = (e) => {
-                            e.stopPropagation();
-                            openOtdrInput(selectedNode, conn, dirLabel, otherNode);
-                        };
-                        coreRow.appendChild(otdrBtn);
-                    }
-
+                    coreRow.appendChild(distSpan);
                     div.appendChild(coreRow);
 
                     div.onclick = (e) => {
@@ -167,7 +204,7 @@
             } else {
                 wireMapBtn.style.display = 'none';
             }
-            
+
             document.getElementById('nodeInfoModal').classList.add('active');
         }
         
@@ -1391,17 +1428,15 @@
             XLSX.writeFile(wb, '전주_' + sheetName + '.xlsx');
         }
 
-        // ==================== 공가 신청서 생성 ====================
-        var _cachedInvsData = null; // 세션 동안 장표 캐시
-
+        // ==================== 공가 신청서 생성 (로직은 cable_map_gongga.js) ====================
         async function generateApplication(connId) {
-            // 1. 전주 목록 추출 (exportPoleData와 동일 로직)
             const conn = connections.find(c => c.id === connId);
             if (!conn) return;
             const fromNode = nodes.find(n => n.id === connFrom(conn));
             const toNode   = nodes.find(n => n.id === connTo(conn));
             const off = window._polePreviewOffset || { dLat: 0, dLng: 0 };
 
+            // 전주 로딩 (스냅 누락분 + 장비 인근)
             var snappedIds = (conn.waypoints || [])
                 .filter(wp => wp.snappedPole).map(wp => wp.snappedPole);
             var missingIds = snappedIds.filter(id => !nodes.find(n => n.id === id));
@@ -1438,6 +1473,7 @@
                 return best;
             }
 
+            // 전주 목록 구성
             var poleList = [];
             var startPole = findEquipPole(fromNode);
             if (startPole) poleList.push(startPole);
@@ -1457,353 +1493,30 @@
                 return;
             }
 
-            // 전주 파싱
-            var poles = [];
-            for (var i = 0; i < poleList.length; i++) {
-                var node = poleList[i];
-                var rawNum = (node.memo || '').replace('자가주:true', '').replace('전산화번호: ', '').trim();
-                var m1 = rawNum.match(/^(.{5})(\d{3})$/);
-                var 관리구 = m1 ? m1[1] : rawNum;
-                var 번호 = m1 ? m1[2] : '';
-                var poleName = node.name || '';
-                var m2 = poleName.match(/^(.+?)-(\d{1,4})$/);
-                var 선로명 = m2 ? m2[1] : poleName;
-                var 선로번호 = m2 ? m2[2] : '';
-                var 전산화번호 = (관리구 + (번호 ? String(parseInt(번호)).padStart(3, '0') : '')).toUpperCase();
-                poles.push({ 관리구: 관리구, 번호: 번호, 선로명: 선로명, 선로번호: 선로번호, 전산화번호: 전산화번호 });
-            }
-
-            // 정렬 (sort_key 포팅)
-            poles.sort(function(a, b) {
-                var sa = String(a.선로번호), sb = String(b.선로번호);
-                var hasBrA = /[A-Za-z]/.test(sa), hasBrB = /[A-Za-z]/.test(sb);
-                var numsA = sa.match(/\d+/g) || [], numsB = sb.match(/\d+/g) || [];
-                var baseA = numsA.length ? parseInt(numsA[0]) : 0;
-                var baseB = numsB.length ? parseInt(numsB[0]) : 0;
-                if (baseA !== baseB) return baseA - baseB;
-                var brA = hasBrA ? 0 : 1, brB = hasBrB ? 0 : 1;
-                if (brA !== brB) return brA - brB;
-                return sa < sb ? -1 : sa > sb ? 1 : 0;
+            // 전주별 장비 매핑 (근접 30m 이내)
+            var equipNodes = nodes.filter(n => !isPoleType(n.type) && n.type !== 'datacenter' && n.type !== 'subscriber');
+            var equipByPoleId = {};
+            poleList.forEach(pole => {
+                var nearby = [];
+                equipNodes.forEach(eq => {
+                    var dlat = (eq.lat - pole.lat) * 111000;
+                    var dlng = (eq.lng - pole.lng) * 111000 * Math.cos(pole.lat * Math.PI / 180);
+                    var d2 = dlat * dlat + dlng * dlng;
+                    if (off.dLat || off.dLng) {
+                        var dlat2 = (eq.lat - (pole.lat + off.dLat)) * 111000;
+                        var dlng2 = (eq.lng - (pole.lng + off.dLng)) * 111000 * Math.cos(pole.lat * Math.PI / 180);
+                        d2 = Math.min(d2, dlat2 * dlat2 + dlng2 * dlng2);
+                    }
+                    if (d2 < 900) nearby.push(eq); // 30m 반경
+                });
+                if (nearby.length > 0) equipByPoleId[pole.id] = nearby;
             });
 
-            // 2. 장표 로딩 (캐시 또는 파일 선택)
-            if (_cachedInvsData) {
-                _buildApplication(poles, _cachedInvsData, fromNode, toNode);
-            } else {
-                // 파일 선택 input
-                var inp = document.createElement('input');
-                inp.type = 'file';
-                inp.accept = '.xlsx,.xls';
-                inp.onchange = function(ev) {
-                    var file = ev.target.files[0];
-                    if (!file) return;
-                    showStatus('장표 파일 읽는 중...');
-                    var reader = new FileReader();
-                    reader.onload = function(e) {
-                        try {
-                            var data = new Uint8Array(e.target.result);
-                            var wb = XLSX.read(data, { type: 'array' });
-                            var ws = wb.Sheets[wb.SheetNames[0]];
-                            var rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
-                            // 장표 인덱싱
-                            var byId = {}, byName = {};
-                            rows.forEach(function(r) {
-                                // 컬럼명 trim
-                                var row = {};
-                                Object.keys(r).forEach(function(k) { row[k.trim()] = r[k]; });
-                                var key = String(row['시작전산화번호'] || '').trim().toUpperCase();
-                                if (!key) return;
-                                if (!byId[key]) byId[key] = [];
-                                byId[key].push(row);
-                                var nm = _v(row['현전주 선로명']);
-                                var nb = _v(row['현전주 선로번호']);
-                                if (nm) {
-                                    var nk = nm + '|' + nb;
-                                    if (!byName[nk]) byName[nk] = [];
-                                    byName[nk].push(row);
-                                }
-                            });
-                            _cachedInvsData = { byId: byId, byName: byName };
-                            showStatus('장표 로드 완료 (' + rows.length + '행)');
-                            _buildApplication(poles, _cachedInvsData, fromNode, toNode);
-                        } catch (ex) {
-                            alert('장표 파일 읽기 실패: ' + ex.message);
-                        }
-                    };
-                    reader.readAsArrayBuffer(file);
-                };
-                inp.click();
-            }
-        }
-
-        function _v(x) {
-            if (x == null) return '';
-            var s = String(x).trim();
-            return (s.toLowerCase() === 'nan' || s.toLowerCase() === 'none') ? '' : s;
-        }
-
-        function _numStr(n) {
-            try { return String(parseInt(n)); } catch(e) { return String(n); }
-        }
-
-        function _buildApplication(poles, invs, fromNode, toNode) {
-            var JUMP_THRESHOLD = 2;
-            var defaults = { 설치단: '2', 사업자: 'A000042286', 용도: '4', 통신선: 'O', 규격: '12' };
-
-            var NCOLS = 34;
-            // Row 3 (그룹 헤더) — 순번/접수구분/비고는 세로 병합이므로 빈 문자열
-            var HEADER_ROW3 = [
-                '','',
-                '현전주','현전주','현전주','현전주',
-                '1차전주','1차전주','1차전주','1차전주',
-                '2차전주','2차전주','2차전주','2차전주',
-                '통신케이블','통신케이블','통신케이블','통신케이블','통신케이블',
-                '통신케이블','통신케이블','통신케이블','통신케이블','통신케이블',
-                '통신기기1','통신기기1','통신기기1',
-                '통신기기2','통신기기2','통신기기2',
-                '통신기기3','통신기기3','통신기기3',
-                ''
-            ];
-            // Row 4 (세부 헤더)
-            var HEADER_ROW4 = [
-                '','',
-                '선로명','선로번호','관리구','번호',
-                '선로명','선로번호','관리구','번호',
-                '선로명','선로번호','관리구','번호',
-                '설치단','사업자','설치일자','케이블번호','용도',
-                '통선선종류','규격','승인코드','고객공급선종류','봉인번호',
-                '기기코드','사업자','관리번호',
-                '기기코드','사업자','관리번호',
-                '기기코드','사업자','관리번호',
-                ''
-            ];
-            var C = {
-                순번:0, 접수구분:1,
-                현선로명:2, 현선로번호:3, 현관리구:4, 현번호:5,
-                '1차선로명':6, '1차선로번호':7, '1차관리구':8, '1차번호':9,
-                '2차선로명':10, '2차선로번호':11, '2차관리구':12, '2차번호':13,
-                설치단:14, 사업자:15, 설치일자:16, 케이블번호:17,
-                용도:18, 통선선종류:19, 규격:20, 승인코드:21,
-                고객공급선종류:22, 봉인번호:23,
-                비고:33
-            };
-
-            // 자가주 체크
-            function checkJaga(pole, prev, nxt) {
-                var notes = [];
-                try {
-                    var cur = parseInt(pole.선로번호);
-                    if (isNaN(cur)) return '';
-                    if (prev) { var p = parseInt(prev.선로번호); if (!isNaN(p) && Math.abs(cur - p) > JUMP_THRESHOLD) notes.push('1차 전주 자가주'); }
-                    if (nxt)  { var n = parseInt(nxt.선로번호);  if (!isNaN(n) && Math.abs(n - cur) > JUMP_THRESHOLD) notes.push('2차 전주 자가주'); }
-                } catch(e) {}
-                return notes.join(' / ');
-            }
-
-            // 장표 → 접수3 행
-            function invsToRow3(r, seq, note) {
-                var row = new Array(NCOLS).fill('');
-                row[C.순번] = seq;
-                row[C.접수구분] = '3';
-                row[C.현선로명] = _v(r['현전주 선로명']);
-                row[C.현선로번호] = _v(r['현전주 선로번호']);
-                row[C.현관리구] = _v(r['현전주 관리구']);
-                row[C.현번호] = _v(r['현전주 번호']);
-                row[C['1차선로명']] = _v(r['1차전주 선로명']);
-                row[C['1차선로번호']] = _v(r['1차전주 선로번호']);
-                row[C['1차관리구']] = _v(r['1차전주 관리구']);
-                row[C['1차번호']] = _v(r['1차전주 번호']);
-                row[C['2차선로명']] = _v(r['2차전주 선로명']);
-                row[C['2차선로번호']] = _v(r['2차전주 선로번호']);
-                row[C['2차관리구']] = _v(r['2차전주 관리구']);
-                row[C['2차번호']] = _v(r['2차전주 번호']);
-                row[C.설치단] = _v(r['설치단']);
-                row[C.사업자] = _v(r['사업자']);
-                row[C.설치일자] = _v(r['설치일자']);
-                row[C.케이블번호] = _v(r['케이블번호']);
-                row[C.용도] = _v(r['용도']);
-                row[C.통선선종류] = _v(r['통신선종류']);
-                row[C.규격] = _v(r['규격']);
-                row[C.승인코드] = _v(r['승인코드']);
-                row[C.고객공급선종류] = _v(r['고객공급선종류']);
-                row[C.봉인번호] = _v(r['봉인번호']);
-                row[C.비고] = note || '';
-                return row;
-            }
-
-            // 전주 → 접수2 행
-            function poleToRow2(pole, prev, nxt, seq, invsRow, note) {
-                var row = new Array(NCOLS).fill('');
-                row[C.순번] = seq;
-                row[C.접수구분] = '2';
-                row[C.현선로명] = pole.선로명;
-                row[C.현선로번호] = pole.선로번호;
-                row[C.현관리구] = pole.관리구;
-                row[C.현번호] = _numStr(pole.번호);
-                if (prev) {
-                    row[C['1차선로명']] = prev.선로명;
-                    row[C['1차선로번호']] = prev.선로번호;
-                    row[C['1차관리구']] = prev.관리구;
-                    row[C['1차번호']] = _numStr(prev.번호);
-                } else {
-                    row[C['1차관리구']] = '99999'; row[C['1차번호']] = '999';
-                }
-                if (nxt) {
-                    row[C['2차선로명']] = nxt.선로명;
-                    row[C['2차선로번호']] = nxt.선로번호;
-                    row[C['2차관리구']] = nxt.관리구;
-                    row[C['2차번호']] = _numStr(nxt.번호);
-                } else {
-                    row[C['2차관리구']] = '99999'; row[C['2차번호']] = '999';
-                }
-                row[C.설치단] = defaults.설치단;
-                row[C.사업자] = defaults.사업자;
-                row[C.용도] = defaults.용도;
-                row[C.통선선종류] = invsRow ? _v(invsRow['통신선종류']) : defaults.통신선;
-                row[C.규격] = invsRow ? _v(invsRow['규격']) : defaults.규격;
-                row[C.비고] = note || '';
-                return row;
-            }
-
-            // 분류
-            var 신규 = [], 정비_신설 = [], 정비_해제 = [];
-            var seq = 1;
-            for (var i = 0; i < poles.length; i++) {
-                var pole = poles[i];
-                var prev = i > 0 ? poles[i - 1] : null;
-                var nxt = i < poles.length - 1 ? poles[i + 1] : null;
-                var invsRows = invs.byId[pole.전산화번호];
-                if (!invsRows) {
-                    var nameKey = pole.선로명 + '|' + pole.선로번호;
-                    invsRows = invs.byName[nameKey];
-                }
-                var jaga = checkJaga(pole, prev, nxt);
-
-                if (invsRows) {
-                    정비_신설.push(poleToRow2(pole, prev, nxt, seq, invsRows[0], jaga));
-                    invsRows.forEach(function(ir) {
-                        정비_해제.push(invsToRow3(ir, seq, jaga));
-                    });
-                } else {
-                    신규.push(poleToRow2(pole, prev, nxt, seq, null, jaga));
-                }
-                seq++;
-            }
-
-            // 본/조 계산
-            function countBonJo(dataRows) {
-                var poleKeys = new Set();
-                dataRows.forEach(function(r) { poleKeys.add(r[C.현선로명] + '-' + r[C.현선로번호]); });
-                return { bon: poleKeys.size, jo: dataRows.length };
-            }
-
-            // 구간명 생성 (첫간선명+번호~끝번호)
-            function makeRangeName(dataRows) {
-                if (dataRows.length === 0) return '';
-                var first = dataRows[0], last = dataRows[dataRows.length - 1];
-                var firstName = first[C.현선로명], firstNum = first[C.현선로번호];
-                var lastName = last[C.현선로명], lastNum = last[C.현선로번호];
-                if (firstName === lastName) {
-                    return firstName + firstNum + '-' + lastNum;
-                }
-                return firstName + firstNum + '-' + lastName + lastNum;
-            }
-
-            // Excel 생성
-            var COL_WIDTHS = [6,7, 9,8,8,5, 9,8,8,5, 9,8,8,5, 5,13,11,18,5, 5,5,7,7,8, 7,7,7, 7,7,7, 7,7,7, 20];
-
-            function buildSheet(dataRows) {
-                var aoa = [];
-                // Row 1: 제목
-                var titleRow = new Array(NCOLS).fill('');
-                titleRow[0] = '공가 가공설비 시설계획서';
-                aoa.push(titleRow);
-                // Row 2: 빈 행
-                aoa.push(new Array(NCOLS).fill(''));
-                // Row 3: 그룹 헤더 (순번/접수구분/비고는 세로병합이므로 여기서 텍스트 지정)
-                var row3 = HEADER_ROW3.slice();
-                row3[0] = '순번';
-                row3[1] = '접수구분';
-                row3[33] = '비고';
-                aoa.push(row3);
-                // Row 4: 세부 헤더
-                aoa.push(HEADER_ROW4);
-                // Row 5~: 데이터
-                dataRows.forEach(function(r) { aoa.push(r); });
-
-                var ws = XLSX.utils.aoa_to_sheet(aoa);
-
-                // 병합
-                var merges = [
-                    // 제목행 (Row 1)
-                    { s: { r: 0, c: 0 }, e: { r: 0, c: NCOLS - 1 } },
-                    // 순번 세로 병합 (Row 3-4, A3:A4)
-                    { s: { r: 2, c: 0 }, e: { r: 3, c: 0 } },
-                    // 접수구분 세로 병합 (Row 3-4, B3:B4)
-                    { s: { r: 2, c: 1 }, e: { r: 3, c: 1 } },
-                    // 현전주 (C3:F3)
-                    { s: { r: 2, c: 2 }, e: { r: 2, c: 5 } },
-                    // 1차전주 (G3:J3)
-                    { s: { r: 2, c: 6 }, e: { r: 2, c: 9 } },
-                    // 2차전주 (K3:N3)
-                    { s: { r: 2, c: 10 }, e: { r: 2, c: 13 } },
-                    // 통신케이블 (O3:X3)
-                    { s: { r: 2, c: 14 }, e: { r: 2, c: 23 } },
-                    // 통신기기1 (Y3:AA3)
-                    { s: { r: 2, c: 24 }, e: { r: 2, c: 26 } },
-                    // 통신기기2 (AB3:AD3)
-                    { s: { r: 2, c: 27 }, e: { r: 2, c: 29 } },
-                    // 통신기기3 (AE3:AG3)
-                    { s: { r: 2, c: 30 }, e: { r: 2, c: 32 } },
-                    // 비고 세로 병합 (Row 3-4, AH3:AH4)
-                    { s: { r: 2, c: 33 }, e: { r: 3, c: 33 } }
-                ];
-                ws['!merges'] = merges;
-
-                // 열 너비
-                ws['!cols'] = COL_WIDTHS.map(function(w) { return { wch: w }; });
-
-                return ws;
-            }
-
-            // 시트 1: 신규
-            var ws1 = buildSheet(신규);
-
-            // 시트 2: 정비 (해제 먼저, 신설 나중)
-            var 정비data = 정비_해제.concat(정비_신설);
-            var ws2 = buildSheet(정비data);
-
-            // 시트 3: 해지 (빈)
-            var ws3 = buildSheet([]);
-
-            var wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws1, '차세대_공가가공설비시설계획서_양식');
-            XLSX.utils.book_append_sheet(wb, ws2, '차세대_공가가공설비시설계획서_양식');
-            XLSX.utils.book_append_sheet(wb, ws3, '차세대_공가가공설비시설계획서_양식');
-
-            // 파일명 생성
-            var today = new Date();
-            var dateStr = String(today.getFullYear()).slice(2) +
-                          String(today.getMonth() + 1).padStart(2, '0') +
-                          String(today.getDate()).padStart(2, '0');
-
-            // 신규 파일명
-            if (신규.length > 0) {
-                var nInfo = countBonJo(신규);
-                var nRange = makeRangeName(신규);
-                var fn1 = dateStr + '_공가신규(' + nRange + ')' + nInfo.bon + '본 ' + nInfo.jo + '조.xlsx';
-            }
-            // 정비 파일명
-            if (정비_신설.length > 0) {
-                var jInfo = countBonJo(정비_신설);
-                var jRange = makeRangeName(정비_신설);
-                var fn2 = dateStr + '_공가정비(' + jRange + ')' + jInfo.bon + '본 ' + jInfo.jo + '조.xlsx';
-            }
-
-            var fileName = dateStr + '_공가신청서_' + ((fromNode?.name || 'A') + '-' + (toNode?.name || 'B')).slice(0, 20) + '.xlsx';
-            XLSX.writeFile(wb, fileName);
-
-            showStatus('공가 신청서 생성 완료 — 신규 ' + 신규.length + '행, 정비 해제 ' + 정비_해제.length + '행 + 신설 ' + 정비_신설.length + '행');
+            // gongga.js로 위임
+            var poles = gonggaParsePoles(poleList, { cores: conn.cores, lineType: conn.lineType, equipByPoleId: equipByPoleId });
+            gonggaLoadInvs(function(invsData) {
+                gonggaBuildApplication(poles, invsData, fromNode, toNode);
+            });
         }
 
         // ── 케이블 경유 전주 라벨 일괄 조정 (전주선택 패널 재사용) ──
@@ -1834,18 +1547,45 @@
         // ==================== 케이블 정보 패널 ====================
         function showCableInfoPanel(connId, fromNode, toNode, connection, e) {
             var panel = document.getElementById('cableInfoPanel');
-            var typeText = (connection.lineType || 'existing') === 'new' ? '🔴 신설' : '🔵 기설';
+            var isNew = (connection.lineType || 'existing') === 'new';
+            var typeDot = isNew ? '#e53935' : '#1a6fd4';
+            var typeLabel = isNew ? '신설' : '기설';
+            var cid = connId;
+            var _ci = function(fn) { return fn + '(\'' + cid + '\'); closeCableInfoPanel()'; };
+            var btnBase = 'width:100%;padding:7px 12px;border:none;border-radius:6px;cursor:pointer;font-size:12.5px;font-weight:600;font-family:inherit;display:flex;align-items:center;gap:7px;transition:filter 0.15s;';
+            var btnPrimary = btnBase + 'background:#1a6fd4;color:#fff;';
+            var btnLight = btnBase + 'background:#f0f4fa;color:#334155;';
+            var btnDanger = btnBase + 'background:none;color:#b91c1c;justify-content:center;font-size:11.5px;font-weight:500;padding:6px;';
+            // SVG 아이콘
+            var icoCore = '<svg width="15" height="15" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="8" stroke="currentColor" stroke-width="1.8"/><circle cx="10" cy="10" r="3" fill="currentColor"/></svg>';
+            var icoPole = '<svg width="15" height="15" viewBox="0 0 20 20" fill="none"><rect x="9" y="2" width="2.5" height="16" rx="1" fill="currentColor"/><rect x="4" y="5" width="12" height="2" rx="1" fill="currentColor" opacity="0.6"/></svg>';
+            var icoDoc = '<svg width="15" height="15" viewBox="0 0 20 20" fill="none"><rect x="3" y="1" width="14" height="18" rx="2" stroke="currentColor" stroke-width="1.8"/><line x1="6.5" y1="6" x2="13.5" y2="6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="6.5" y1="9.5" x2="13.5" y2="9.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="6.5" y1="13" x2="10.5" y2="13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
+            var icoLabel = '<svg width="15" height="15" viewBox="0 0 20 20" fill="none"><path d="M3 4h10l4 6-4 6H3V4z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="13" cy="10" r="1.5" fill="currentColor"/></svg>';
+            var icoSwitch = '<svg width="15" height="15" viewBox="0 0 20 20" fill="none"><path d="M4 7h9m0 0l-3-3m3 3l-3 3M16 13H7m0 0l3 3m-3-3l3-3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+            var icoDel = '<svg width="13" height="13" viewBox="0 0 20 20" fill="none"><path d="M5 7h10l-1 10H6L5 7z" stroke="currentColor" stroke-width="1.5"/><path d="M3 5h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M8 3h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
+
             document.getElementById('cableInfoContent').innerHTML =
-                '<div style="text-align:center;">' +
-                '<div style="font-weight:bold; margin-bottom:8px; color:#333;">' + (escapeHtml(fromNode?.name) || '장비') + ' ↔ ' + (escapeHtml(toNode?.name) || '장비') + '</div>' +
-                '<div style="color:#666; font-size:12px; margin-bottom:10px;">' + typeText + ' · ' + connection.cores + '코어</div>' +
-                '<button onclick="startWaypointInsertModeById(\'' + connId + '\'); closeCableInfoPanel()" style="width:100%; padding:8px; margin-bottom:5px; background:#27ae60; color:white; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">📍 경유점 추가</button>' +
-                '<button onclick="changeCoreCount(\'' + connId + '\'); closeCableInfoPanel()" style="width:100%; padding:8px; margin-bottom:5px; background:#3498db; color:white; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">🔢 코어 수 변경</button>' +
-                '<button onclick="exportPoleData(\'' + connId + '\'); closeCableInfoPanel()" style="width:100%; padding:8px; margin-bottom:5px; background:#9b59b6; color:white; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">📊 전주 데이터 추출</button>' +
-                '<button onclick="generateApplication(\'' + connId + '\'); closeCableInfoPanel()" style="width:100%; padding:8px; margin-bottom:5px; background:#16a085; color:white; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">📋 공가 신청서 생성</button>' +
-                '<button onclick="openCablePoleLabelBatch(\'' + connId + '\'); closeCableInfoPanel()" style="width:100%; padding:8px; margin-bottom:5px; background:#e67e22; color:white; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">🏷️ 전주 라벨 일괄조정</button>' +
-                '<button onclick="toggleCableType(\'' + connId + '\'); closeCableInfoPanel()" style="width:100%; padding:8px; margin-bottom:5px; background:#8e44ad; color:white; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">🔄 신설/기설 전환</button>' +
-                '<button onclick="deleteConnection(\'' + connId + '\'); closeCableInfoPanel()" style="width:100%; padding:8px; background:#e74c3c; color:white; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">🗑️ 케이블 삭제</button>' +
+                // 헤더
+                '<div style="padding:14px 16px 10px;border-bottom:1px solid #f0f0f0;">' +
+                  '<div style="font-size:13px;font-weight:700;color:#1e293b;letter-spacing:-0.3px;line-height:1.4;">' +
+                    (escapeHtml(fromNode?.name) || '장비') + '&nbsp;&nbsp;<span style="color:#94a3b8;font-weight:400;">→</span>&nbsp;&nbsp;' + (escapeHtml(toNode?.name) || '장비') +
+                  '</div>' +
+                  '<div style="margin-top:5px;display:flex;align-items:center;gap:5px;">' +
+                    '<span style="width:7px;height:7px;border-radius:50%;background:' + typeDot + ';display:inline-block;"></span>' +
+                    '<span style="font-size:11.5px;color:#64748b;font-weight:500;">' + typeLabel + ' · ' + connection.cores + '코어</span>' +
+                  '</div>' +
+                '</div>' +
+                // 버튼 영역
+                '<div style="padding:10px 12px;display:flex;flex-direction:column;gap:5px;">' +
+                  '<button onclick="' + _ci('changeCoreCount') + '" style="' + btnPrimary + '" onmouseover="this.style.filter=\'brightness(1.1)\'" onmouseout="this.style.filter=\'none\'">' + icoCore + '코어 수 변경</button>' +
+                  '<button onclick="' + _ci('exportPoleData') + '" style="' + btnLight + '" onmouseover="this.style.background=\'#e2e8f0\'" onmouseout="this.style.background=\'#f0f4fa\'">' + icoPole + '전주 데이터 추출</button>' +
+                  '<button onclick="' + _ci('generateApplication') + '" style="' + btnLight + '" onmouseover="this.style.background=\'#e2e8f0\'" onmouseout="this.style.background=\'#f0f4fa\'">' + icoDoc + '공가 신청서 생성</button>' +
+                  '<button onclick="' + _ci('openCablePoleLabelBatch') + '" style="' + btnLight + '" onmouseover="this.style.background=\'#e2e8f0\'" onmouseout="this.style.background=\'#f0f4fa\'">' + icoLabel + '전주 라벨 일괄조정</button>' +
+                  '<button onclick="' + _ci('toggleCableType') + '" style="' + btnLight + '" onmouseover="this.style.background=\'#e2e8f0\'" onmouseout="this.style.background=\'#f0f4fa\'">' + icoSwitch + '신설/기설 전환</button>' +
+                '</div>' +
+                // 삭제 영역
+                '<div style="padding:4px 12px 10px;border-top:1px solid #f0f0f0;">' +
+                  '<button onclick="' + _ci('deleteConnection') + '" style="' + btnDanger + '" onmouseover="this.style.background=\'#fef2f2\'" onmouseout="this.style.background=\'none\'">' + icoDel + '케이블 삭제</button>' +
                 '</div>';
             // 클릭 위치 기준으로 패널 위치 결정
             var mapRect = document.getElementById('map').getBoundingClientRect();
@@ -1853,8 +1593,8 @@
             var px = mapRect.left + clickPt.x + 15;
             var py = mapRect.top + clickPt.y - 30;
             // 화면 밖으로 넘어가지 않도록 보정
-            if (px + 260 > window.innerWidth) px = px - 280;
-            if (py + 350 > window.innerHeight) py = window.innerHeight - 360;
+            if (px + 250 > window.innerWidth) px = px - 270;
+            if (py + 320 > window.innerHeight) py = window.innerHeight - 330;
             if (py < 10) py = 10;
             panel.style.left = px + 'px';
             panel.style.top = py + 'px';

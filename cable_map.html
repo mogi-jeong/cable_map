@@ -617,26 +617,27 @@
         /* ===== A-STYLE MODAL SYSTEM ===== */
         .modal-a .modal-content {
             padding: 0;
-            border-radius: 20px;
+            border-radius: 16px;
             overflow: hidden;
-            box-shadow: 0 20px 64px rgba(0,0,0,0.22);
+            box-shadow: 0 16px 48px rgba(26,111,212,0.15), 0 4px 16px rgba(0,0,0,0.1);
             display: flex;
             flex-direction: column;
         }
         .a-mhd {
             flex-shrink: 0;
-            padding: 20px 26px 16px;
-            border-bottom: 1.5px solid #f0f0f0;
+            padding: 18px 26px 14px;
+            border-bottom: 1.5px solid #eef2f7;
+            background: linear-gradient(135deg, #f8fafd 0%, #fff 100%);
             display: flex;
             align-items: center;
             gap: 12px;
         }
-        .a-mhd h2 { font-size: 17px; font-weight: 700; color: #16213e; margin: 0; flex: 1; }
+        .a-mhd h2 { font-size: 16px; font-weight: 700; color: #1e293b; margin: 0; flex: 1; letter-spacing: -0.3px; }
         .a-mbd { flex: 1; padding: 20px 26px; overflow-y: auto; }
         .a-mft {
             flex-shrink: 0;
-            padding: 14px 26px 20px;
-            border-top: 1.5px solid #f0f0f0;
+            padding: 14px 26px 18px;
+            border-top: 1.5px solid #eef2f7;
             display: flex;
             gap: 8px;
         }
@@ -690,22 +691,21 @@
         .a-btn-orange  { background: #e67e22; color: #fff; }
         /* 연결 카드 */
         .a-conn-card {
-            background: #f9fafb;
-            border: 1.5px solid #ebebeb;
-            border-left-width: 4px;
-            border-radius: 10px;
-            padding: 11px 14px;
-            margin-bottom: 8px;
+            background: #fff;
+            border: 1.5px solid #eef2f7;
+            border-left: 3.5px solid #1a6fd4;
+            border-radius: 8px;
+            padding: 10px 14px;
+            margin-bottom: 6px;
             cursor: pointer;
-            transition: border-color .15s, box-shadow .15s;
+            transition: border-color .15s, box-shadow .15s, background .15s;
         }
         .a-conn-card:hover {
-            border-top-color: #d0dde8;
-            border-right-color: #d0dde8;
-            border-bottom-color: #d0dde8;
-            box-shadow: 0 2px 10px rgba(0,0,0,.07);
+            background: #f8fafd;
+            border-color: #dde5ef;
+            border-left-color: inherit;
+            box-shadow: 0 2px 8px rgba(26,111,212,.08);
         }
-        .a-conn-core { font-size: 11px; color: #555; margin-top: 5px; letter-spacing: .05em; text-transform: uppercase; font-weight: bold; }
         /* OFD 카드 */
         .a-ofd-card {
             background: #fff;
@@ -856,56 +856,60 @@
             <span class="tb-label">CCTV</span>
         </button>
 
-        <!-- 전주선택 -->
+        <!-- 전주선택: 전봇대 + 커서/포인터 -->
         <button class="tb-btn" id="poleSelectBtn" onclick="startPoleSelect()" data-tip="전주 범위 선택 (라벨 일괄 조정)" style="color:#9b59b6;">
             <svg width="22" height="22" viewBox="0 0 40 40">
-                <rect x="4" y="4" width="32" height="32" rx="4" fill="#f5eeff" stroke="#9b59b6" stroke-width="2"/>
-                <rect x="10" y="10" width="14" height="14" rx="2" fill="none" stroke="#9b59b6" stroke-width="2" stroke-dasharray="3,2"/>
-                <circle cx="10" cy="10" r="2.5" fill="#9b59b6"/>
-                <circle cx="24" cy="10" r="2.5" fill="#9b59b6"/>
-                <circle cx="10" cy="24" r="2.5" fill="#9b59b6"/>
-                <circle cx="24" cy="24" r="2.5" fill="#9b59b6"/>
-                <line x1="28" y1="28" x2="36" y2="36" stroke="#9b59b6" stroke-width="2.5" stroke-linecap="round"/>
+                <circle cx="15" cy="10" r="4" fill="none" stroke="#9b59b6" stroke-width="2.2"/>
+                <line x1="15" y1="14" x2="15" y2="32" stroke="#9b59b6" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="10" y1="30" x2="20" y2="30" stroke="#9b59b6" stroke-width="2" stroke-linecap="round"/>
+                <path d="M24,16 L24,32 L30,28 L34,34 L36,32 L32,26 L38,26 Z" fill="#9b59b6"/>
             </svg>
             <span class="tb-label">전주선택</span>
         </button>
+        <!-- 연결전주: 전봇대 두 개 + 연결선 -->
         <button class="tb-btn" id="poleFilterBtn" onclick="togglePoleFilter()" data-tip="케이블 연결된 전주만 표시">
             <svg width="22" height="22" viewBox="0 0 40 40">
-                <rect x="4" y="4" width="32" height="32" rx="4" fill="#e8f8f0" stroke="#27ae60" stroke-width="2"/>
-                <circle cx="14" cy="16" r="4" fill="none" stroke="#27ae60" stroke-width="2"/>
-                <line x1="14" y1="20" x2="14" y2="30" stroke="#27ae60" stroke-width="2" stroke-linecap="round"/>
-                <line x1="10" y1="28" x2="18" y2="28" stroke="#27ae60" stroke-width="1.5"/>
-                <circle cx="28" cy="16" r="4" fill="none" stroke="#27ae60" stroke-width="2"/>
-                <line x1="28" y1="20" x2="28" y2="30" stroke="#27ae60" stroke-width="2" stroke-linecap="round"/>
-                <line x1="24" y1="28" x2="32" y2="28" stroke="#27ae60" stroke-width="1.5"/>
-                <line x1="18" y1="16" x2="24" y2="16" stroke="#e74c3c" stroke-width="2.5" stroke-linecap="round"/>
+                <circle cx="11" cy="10" r="3.5" fill="none" stroke="#27ae60" stroke-width="2"/>
+                <line x1="11" y1="13.5" x2="11" y2="32" stroke="#27ae60" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="7" y1="30" x2="15" y2="30" stroke="#27ae60" stroke-width="2" stroke-linecap="round"/>
+                <circle cx="29" cy="10" r="3.5" fill="none" stroke="#27ae60" stroke-width="2"/>
+                <line x1="29" y1="13.5" x2="29" y2="32" stroke="#27ae60" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="25" y1="30" x2="33" y2="30" stroke="#27ae60" stroke-width="2" stroke-linecap="round"/>
+                <line x1="14.5" y1="18" x2="25.5" y2="18" stroke="#27ae60" stroke-width="2" stroke-linecap="round" stroke-dasharray="3,2"/>
             </svg>
             <span class="tb-label">연결전주</span>
         </button>
 
         <div class="toolbar-divider"></div>
 
-        <!-- 철거/조가선 임시 그리기 -->
+        <!-- 철거C: 동축케이블 + X -->
         <button class="tb-btn" id="tempDrawCableBtn" onclick="startTempDraw('cable')" data-tip="철거 케이블 임시 그리기 (초록 실선)">
             <svg width="22" height="22" viewBox="0 0 40 40">
-                <rect x="4" y="4" width="32" height="32" rx="4" fill="#e8f8e8" stroke="#27ae60" stroke-width="2"/>
-                <line x1="8" y1="30" x2="32" y2="10" stroke="#27ae60" stroke-width="3"/>
-                <line x1="14" y1="20" x2="26" y2="20" stroke="#c0392b" stroke-width="2"/>
+                <path d="M6,30 Q14,18 20,22 Q26,26 34,14" fill="none" stroke="#27ae60" stroke-width="2.8" stroke-linecap="round"/>
+                <line x1="26" y1="6" x2="36" y2="16" stroke="#e74c3c" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="36" y1="6" x2="26" y2="16" stroke="#e74c3c" stroke-width="2.5" stroke-linecap="round"/>
             </svg>
             <span class="tb-label">철거C</span>
         </button>
+        <!-- 조가선: 수평 와이어선 -->
         <button class="tb-btn" id="tempDrawMWBtn" onclick="startTempDraw('mw')" data-tip="조가선 임시 그리기 (검정 실선)">
             <svg width="22" height="22" viewBox="0 0 40 40">
-                <rect x="4" y="4" width="32" height="32" rx="4" fill="#f0f0f0" stroke="#333" stroke-width="2"/>
-                <line x1="8" y1="30" x2="32" y2="10" stroke="#333" stroke-width="3"/>
+                <path d="M4,20 Q12,12 20,20 Q28,28 36,20" fill="none" stroke="#555" stroke-width="2.8" stroke-linecap="round"/>
+                <circle cx="4" cy="20" r="2.5" fill="#555"/>
+                <circle cx="36" cy="20" r="2.5" fill="#555"/>
+                <line x1="4" y1="20" x2="4" y2="34" stroke="#555" stroke-width="1.5" stroke-linecap="round"/>
+                <line x1="36" y1="20" x2="36" y2="34" stroke="#555" stroke-width="1.5" stroke-linecap="round"/>
             </svg>
             <span class="tb-label">조가선</span>
         </button>
+        <!-- 임시삭제: 휴지통 -->
         <button class="tb-btn" onclick="clearTempDrawAll()" data-tip="임시 그리기 전체 삭제">
             <svg width="22" height="22" viewBox="0 0 40 40">
-                <rect x="4" y="4" width="32" height="32" rx="4" fill="#fde8e8" stroke="#e74c3c" stroke-width="2"/>
-                <line x1="12" y1="12" x2="28" y2="28" stroke="#e74c3c" stroke-width="3" stroke-linecap="round"/>
-                <line x1="28" y1="12" x2="12" y2="28" stroke="#e74c3c" stroke-width="3" stroke-linecap="round"/>
+                <rect x="14" y="6" width="12" height="4" rx="2" fill="none" stroke="#e74c3c" stroke-width="2"/>
+                <line x1="8" y1="10" x2="32" y2="10" stroke="#e74c3c" stroke-width="2.2" stroke-linecap="round"/>
+                <path d="M10,10 L12,34 Q12,36 14,36 L26,36 Q28,36 28,34 L30,10" fill="none" stroke="#e74c3c" stroke-width="2"/>
+                <line x1="17" y1="15" x2="17" y2="31" stroke="#e74c3c" stroke-width="1.8" stroke-linecap="round"/>
+                <line x1="23" y1="15" x2="23" y2="31" stroke="#e74c3c" stroke-width="1.8" stroke-linecap="round"/>
             </svg>
             <span class="tb-label">임시삭제</span>
         </button>
@@ -926,118 +930,92 @@
         <div class="toolbar-divider"></div>
 
         <!-- 데이터 -->
+        <!-- 내보내기: 아래 화살표 + 선 -->
         <button class="tb-btn" onclick="exportData()" data-tip="데이터 내보내기 (JSON)">
             <svg width="22" height="22" viewBox="0 0 40 40">
-                <rect x="4" y="4" width="32" height="32" rx="4" fill="#e8f0fe" stroke="#1a6fd4" stroke-width="2"/>
-                <rect x="10" y="8" width="20" height="3" rx="1" fill="#1a6fd4" opacity="0.4"/>
-                <rect x="10" y="13" width="14" height="3" rx="1" fill="#1a6fd4" opacity="0.3"/>
-                <line x1="20" y1="18" x2="20" y2="30" stroke="#1a6fd4" stroke-width="2.5"/>
-                <polyline points="14,25 20,32 26,25" fill="none" stroke="#1a6fd4" stroke-width="2.5" stroke-linejoin="round"/>
+                <line x1="20" y1="6" x2="20" y2="28" stroke="#1a6fd4" stroke-width="2.5" stroke-linecap="round"/>
+                <polyline points="12,22 20,30 28,22" fill="none" stroke="#1a6fd4" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                <line x1="8" y1="34" x2="32" y2="34" stroke="#1a6fd4" stroke-width="2.5" stroke-linecap="round"/>
             </svg>
             <span class="tb-label">내보내기</span>
         </button>
+        <!-- 불러오기: 위 화살표 + 선 -->
         <button class="tb-btn" onclick="document.getElementById('importFile').click()" data-tip="데이터 불러오기 (JSON)">
             <svg width="22" height="22" viewBox="0 0 40 40">
-                <rect x="4" y="4" width="32" height="32" rx="4" fill="#fff5e8" stroke="#e67e22" stroke-width="2"/>
-                <rect x="10" y="24" width="20" height="3" rx="1" fill="#e67e22" opacity="0.4"/>
-                <rect x="10" y="29" width="14" height="3" rx="1" fill="#e67e22" opacity="0.3"/>
-                <line x1="20" y1="22" x2="20" y2="10" stroke="#e67e22" stroke-width="2.5"/>
-                <polyline points="14,15 20,8 26,15" fill="none" stroke="#e67e22" stroke-width="2.5" stroke-linejoin="round"/>
+                <line x1="20" y1="30" x2="20" y2="12" stroke="#e67e22" stroke-width="2.5" stroke-linecap="round"/>
+                <polyline points="12,18 20,10 28,18" fill="none" stroke="#e67e22" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                <line x1="8" y1="34" x2="32" y2="34" stroke="#e67e22" stroke-width="2.5" stroke-linecap="round"/>
             </svg>
             <span class="tb-label">불러오기</span>
         </button>
         <input type="file" id="importFile" style="display:none;" accept=".json" onchange="importData(event)">
+        <!-- 전주임포트: 전봇대 + 위 화살표 -->
         <button class="tb-btn" onclick="document.getElementById('importPollFile').click()" data-tip="전주 데이터 임포트 (js_poll.json)">
             <svg width="22" height="22" viewBox="0 0 40 40">
-                <rect x="4" y="4" width="32" height="32" rx="4" fill="#f0e8ff" stroke="#9b59b6" stroke-width="2"/>
-                <line x1="20" y1="22" x2="20" y2="10" stroke="#9b59b6" stroke-width="2.5"/>
-                <polyline points="14,15 20,8 26,15" fill="none" stroke="#9b59b6" stroke-width="2.5" stroke-linejoin="round"/>
-                <circle cx="20" cy="30" r="3" fill="#9b59b6"/>
-                <line x1="12" y1="30" x2="28" y2="30" stroke="#9b59b6" stroke-width="2"/>
+                <circle cx="14" cy="10" r="3.5" fill="none" stroke="#9b59b6" stroke-width="2"/>
+                <line x1="14" y1="13.5" x2="14" y2="34" stroke="#9b59b6" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="9" y1="32" x2="19" y2="32" stroke="#9b59b6" stroke-width="2" stroke-linecap="round"/>
+                <line x1="30" y1="30" x2="30" y2="12" stroke="#9b59b6" stroke-width="2.5" stroke-linecap="round"/>
+                <polyline points="24,18 30,10 36,18" fill="none" stroke="#9b59b6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
             <span class="tb-label">전주임포트</span>
         </button>
         <input type="file" id="importPollFile" style="display:none;" accept=".json" onchange="importPollData(event)">
 
-        <!-- 전주 위치 보정 -->
+        <!-- 위치보정: 위치핀 + 체크 -->
         <button class="tb-btn" onclick="openOffsetPanel()" data-tip="전주 위치 보정 (오프셋 조정)" style="--tb-accent:#e67e22;">
             <svg width="22" height="22" viewBox="0 0 40 40">
-                <rect x="4" y="4" width="32" height="32" rx="4" fill="#fef5e7" stroke="#e67e22" stroke-width="2"/>
-                <circle cx="20" cy="20" r="5" fill="none" stroke="#e67e22" stroke-width="2.2"/>
-                <line x1="20" y1="6" x2="20" y2="12" stroke="#e67e22" stroke-width="2.2" stroke-linecap="round"/>
-                <line x1="20" y1="28" x2="20" y2="34" stroke="#e67e22" stroke-width="2.2" stroke-linecap="round"/>
-                <line x1="6" y1="20" x2="12" y2="20" stroke="#e67e22" stroke-width="2.2" stroke-linecap="round"/>
-                <line x1="28" y1="20" x2="34" y2="20" stroke="#e67e22" stroke-width="2.2" stroke-linecap="round"/>
+                <path d="M18,6 C10,6 6,12 6,18 C6,26 18,36 18,36 C18,36 30,26 30,18 C30,12 26,6 18,6 Z" fill="none" stroke="#e67e22" stroke-width="2.2"/>
+                <circle cx="18" cy="17" r="4" fill="none" stroke="#e67e22" stroke-width="2"/>
+                <polyline points="26,24 30,30 38,18" fill="none" stroke="#27ae60" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
             <span class="tb-label">위치보정</span>
         </button>
 
-        <!-- 전주 전체 삭제 -->
+        <!-- 전주삭제: 전봇대 + X -->
         <button class="tb-btn" onclick="deleteAllPoles()" data-tip="전주 전체 삭제" style="--tb-accent:#e74c3c;">
             <svg width="22" height="22" viewBox="0 0 40 40">
-                <rect x="4" y="4" width="32" height="32" rx="4" fill="#fdecea" stroke="#e74c3c" stroke-width="2"/>
-                <!-- 전주 심볼 (X 표시) -->
-                <circle cx="20" cy="14" r="4" fill="none" stroke="#e74c3c" stroke-width="2"/>
-                <line x1="20" y1="18" x2="20" y2="26" stroke="#e74c3c" stroke-width="2.5" stroke-linecap="round"/>
-                <line x1="15" y1="22" x2="25" y2="22" stroke="#e74c3c" stroke-width="2" stroke-linecap="round"/>
-                <line x1="14" y1="29" x2="18" y2="29" stroke="#e74c3c" stroke-width="2" stroke-linecap="round"/>
-                <line x1="22" y1="29" x2="26" y2="29" stroke="#e74c3c" stroke-width="2" stroke-linecap="round"/>
-                <!-- X 표시 -->
-                <line x1="26" y1="6" x2="34" y2="14" stroke="#e74c3c" stroke-width="2.5" stroke-linecap="round"/>
-                <line x1="34" y1="6" x2="26" y2="14" stroke="#e74c3c" stroke-width="2.5" stroke-linecap="round"/>
+                <circle cx="15" cy="10" r="4" fill="none" stroke="#e74c3c" stroke-width="2.2"/>
+                <line x1="15" y1="14" x2="15" y2="34" stroke="#e74c3c" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="10" y1="32" x2="20" y2="32" stroke="#e74c3c" stroke-width="2" stroke-linecap="round"/>
+                <line x1="26" y1="8" x2="36" y2="18" stroke="#e74c3c" stroke-width="3" stroke-linecap="round"/>
+                <line x1="36" y1="8" x2="26" y2="18" stroke="#e74c3c" stroke-width="3" stroke-linecap="round"/>
             </svg>
             <span class="tb-label">전주삭제</span>
         </button>
 
-        <!-- 저장 -->
+        <!-- 저장: 플로피디스크 -->
         <button class="tb-btn" onclick="saveAllWithRecalc()" data-tip="전체 저장 및 라벨 갱신">
             <svg width="22" height="22" viewBox="0 0 40 40">
-                <rect x="4" y="4" width="32" height="32" rx="4" fill="#e8f8f0" stroke="#27ae60" stroke-width="2"/>
-                <!-- 플로피 디스크 몸체 -->
-                <rect x="8" y="8" width="24" height="24" rx="2" fill="#27ae60" opacity="0.15"/>
-                <!-- 상단 슬롯 -->
-                <rect x="12" y="8" width="12" height="8" rx="1" fill="#27ae60" opacity="0.5"/>
-                <!-- 라벨 창 (흰색) -->
-                <rect x="14" y="9" width="8" height="5" rx="0.5" fill="white" opacity="0.9"/>
-                <!-- 하단 디스크 홈 -->
-                <rect x="10" y="22" width="20" height="10" rx="1" fill="#27ae60" opacity="0.4"/>
-                <!-- 저장 원형 -->
-                <circle cx="20" cy="27" r="3" fill="#27ae60" opacity="0.7"/>
+                <path d="M8,6 L28,6 L34,12 L34,34 Q34,36 32,36 L8,36 Q6,36 6,34 L6,8 Q6,6 8,6 Z" fill="none" stroke="#27ae60" stroke-width="2.2"/>
+                <rect x="12" y="6" width="14" height="10" rx="1" fill="none" stroke="#27ae60" stroke-width="1.8"/>
+                <rect x="22" y="8" width="3" height="6" rx="0.5" fill="#27ae60"/>
+                <rect x="11" y="22" width="18" height="12" rx="1.5" fill="none" stroke="#27ae60" stroke-width="1.8"/>
+                <line x1="14" y1="26" x2="26" y2="26" stroke="#27ae60" stroke-width="1.5" stroke-linecap="round"/>
+                <line x1="14" y1="30" x2="22" y2="30" stroke="#27ae60" stroke-width="1.5" stroke-linecap="round"/>
             </svg>
             <span class="tb-label" style="color:#27ae60;">저장</span>
         </button>
 
-        <!-- 스카이뷰 -->
+        <!-- 스카이뷰: 위성 -->
         <button class="tb-btn" id="skyViewBtn" onclick="toggleSkyView()" data-tip="스카이뷰/지도뷰 전환">
             <svg width="22" height="22" viewBox="0 0 40 40">
-                <rect x="4" y="4" width="32" height="32" rx="4" fill="#e8f0fe" stroke="#1a6fd4" stroke-width="2"/>
-                <ellipse cx="20" cy="18" rx="10" ry="6" fill="#1a6fd4" opacity="0.3"/>
-                <ellipse cx="20" cy="18" rx="10" ry="6" fill="none" stroke="#1a6fd4" stroke-width="1.5"/>
-                <line x1="20" y1="12" x2="20" y2="24" stroke="#1a6fd4" stroke-width="1.5"/>
-                <line x1="10" y1="18" x2="30" y2="18" stroke="#1a6fd4" stroke-width="1.5"/>
-                <path d="M12,14 Q20,10 28,14" fill="none" stroke="#1a6fd4" stroke-width="1.2"/>
-                <path d="M12,22 Q20,26 28,22" fill="none" stroke="#1a6fd4" stroke-width="1.2"/>
-                <circle cx="30" cy="10" r="5" fill="#f0c040" stroke="#e67e22" stroke-width="1.5"/>
-                <line x1="30" y1="4" x2="30" y2="6" stroke="#e67e22" stroke-width="1.5"/>
-                <line x1="30" y1="14" x2="30" y2="16" stroke="#e67e22" stroke-width="1.5"/>
-                <line x1="24" y1="10" x2="26" y2="10" stroke="#e67e22" stroke-width="1.5"/>
-                <line x1="34" y1="10" x2="36" y2="10" stroke="#e67e22" stroke-width="1.5"/>
+                <circle cx="14" cy="26" r="4" fill="none" stroke="#1a6fd4" stroke-width="2"/>
+                <path d="M17,23 L28,12" stroke="#1a6fd4" stroke-width="2.2" stroke-linecap="round"/>
+                <rect x="26" y="6" width="10" height="10" rx="2" fill="none" stroke="#1a6fd4" stroke-width="2" transform="rotate(45,31,11)"/>
+                <path d="M10,30 Q6,34 8,36" stroke="#1a6fd4" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+                <path d="M6,28 Q2,34 6,38" stroke="#1a6fd4" stroke-width="1.8" stroke-linecap="round" fill="none"/>
             </svg>
             <span class="tb-label">스카이뷰</span>
         </button>
 
         <div class="toolbar-divider"></div>
 
-        <!-- 초기화 -->
+        <!-- 초기화: 원형 화살표 -->
         <button class="tb-btn" onclick="resetAllData()" data-tip="전체 데이터 초기화">
             <svg width="22" height="22" viewBox="0 0 40 40">
-                <rect x="4" y="4" width="32" height="32" rx="4" fill="#fee8e8" stroke="#e74c3c" stroke-width="2"/>
-                <rect x="10" y="15" width="20" height="3" rx="1" fill="#e74c3c"/>
-                <rect x="14" y="9" width="12" height="6" rx="2" fill="none" stroke="#e74c3c" stroke-width="2"/>
-                <rect x="12" y="18" width="16" height="14" rx="2" fill="#e74c3c" opacity="0.7"/>
-                <line x1="17" y1="22" x2="17" y2="29" stroke="white" stroke-width="1.5"/>
-                <line x1="20" y1="22" x2="20" y2="29" stroke="white" stroke-width="1.5"/>
-                <line x1="23" y1="22" x2="23" y2="29" stroke="white" stroke-width="1.5"/>
+                <path d="M20,8 A12,12 0 1,1 8,20" fill="none" stroke="#e74c3c" stroke-width="2.8" stroke-linecap="round"/>
+                <polyline points="8,12 8,20 16,20" fill="none" stroke="#e74c3c" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
             <span class="tb-label" style="color:#e74c3c;">초기화</span>
         </button>
@@ -1141,22 +1119,22 @@
     
     <!-- 직선도 모달 -->
     <div class="modal modal-a" id="wireMapModal">
-        <div class="modal-content" style="max-width: min(95vw, 1100px); width: 95vw; max-height: 92vh;">
-            <div class="a-mhd" style="flex-wrap:wrap; gap:8px; row-gap:8px;">
-                <h2 id="wireMapTitle">직선도</h2>
-                <div style="display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin-left:auto;">
-                    <button class="a-btn a-btn-primary" style="flex:none; padding:8px 14px; font-size:12px;" onclick="autoConnect11()">⚡ 1:1 연결</button>
-                    <button class="a-btn a-btn-danger"  style="flex:none; padding:8px 14px; font-size:12px;" onclick="clearAllConnections()">🗑️ 연결 해제</button>
-                    <button class="a-btn a-btn-purple"  style="flex:none; padding:8px 14px; font-size:12px;" onclick="showAddRNModal()">🔀 RN 추가</button>
-                    <button class="a-btn a-btn-green"   style="flex:none; padding:8px 14px; font-size:12px;" onclick="saveWireMap()">💾 저장</button>
+        <div class="modal-content" style="max-width: min(95vw, 1100px); width: 95vw; max-height: 92vh; border-radius:16px; box-shadow:0 12px 48px rgba(26,111,212,0.10), 0 8px 32px rgba(0,0,0,0.12);">
+            <div class="a-mhd" style="flex-wrap:wrap; gap:8px; row-gap:8px; padding:18px 24px 14px; border-bottom:1px solid #e8ecf0;">
+                <h2 id="wireMapTitle" style="letter-spacing:-0.3px;">직선도</h2>
+                <div style="display:flex; align-items:center; flex-wrap:wrap; gap:6px; margin-left:auto;">
+                    <button class="a-btn a-btn-primary" style="flex:none; padding:7px 14px; font-size:12px; border-radius:8px; font-weight:600; display:inline-flex; align-items:center; gap:5px;" onclick="autoConnect11()"><svg width="14" height="14" viewBox="0 0 20 20" fill="none"><path d="M10 3v14M3 10l7-7 7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> 1:1 연결</button>
+                    <button class="a-btn" style="flex:none; padding:7px 14px; font-size:12px; border-radius:8px; font-weight:600; background:#f0f4fa; color:#475569; border:1px solid #e2e8f0; display:inline-flex; align-items:center; gap:5px;" onclick="clearAllConnections()"><svg width="13" height="13" viewBox="0 0 20 20" fill="none"><path d="M4 10h12M12 6l4 4-4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><line x1="4" y1="4" x2="4" y2="16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg> 연결 해제</button>
+                    <button class="a-btn" style="flex:none; padding:7px 14px; font-size:12px; border-radius:8px; font-weight:600; background:#8b5cf6; color:#fff; display:inline-flex; align-items:center; gap:5px;" onclick="showAddRNModal()"><svg width="14" height="14" viewBox="0 0 20 20" fill="none"><circle cx="6" cy="6" r="3" stroke="currentColor" stroke-width="1.8"/><circle cx="14" cy="14" r="3" stroke="currentColor" stroke-width="1.8"/><path d="M9 6h5v5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg> RN 추가</button>
+                    <button class="a-btn" style="flex:none; padding:7px 14px; font-size:12px; border-radius:8px; font-weight:600; background:#e74c3c; color:#fff; display:inline-flex; align-items:center; gap:5px;" onclick="exportWireMapPDF()"><svg width="14" height="14" viewBox="0 0 20 20" fill="none"><path d="M6 2h8l4 4v12a1 1 0 01-1 1H5a1 1 0 01-1-1V3a1 1 0 011-1z" stroke="currentColor" stroke-width="1.8"/><path d="M14 2v4h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><line x1="7" y1="10" x2="13" y2="10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="7" y1="13" x2="11" y2="13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg> PDF</button>
                     <div id="wireMapOrderBtns" style="display:flex; gap:5px; align-items:center;"></div>
                 </div>
             </div>
-            <div class="a-mbd" style="max-height: calc(92vh - 140px); overflow-x: auto;">
+            <div class="a-mbd" style="max-height: calc(92vh - 140px); overflow-x: auto; padding:20px 24px;">
                 <div id="wireMapContent"></div>
             </div>
-            <div class="a-mft">
-                <button class="a-btn a-btn-ghost" onclick="closeWireMap()">닫기</button>
+            <div class="a-mft" style="border-top:1px solid #e8ecf0; justify-content:center; padding:12px 24px 16px;">
+                <button class="a-btn a-btn-ghost" style="flex:none; padding:9px 40px; border-radius:8px; border:1px solid #e2e8f0; background:#fff; color:#64748b; font-weight:600;" onclick="closeWireMap()">닫기</button>
             </div>
         </div>
     </div>
@@ -1204,31 +1182,41 @@
     <div class="modal modal-a" id="nodeInfoModal">
         <div class="modal-content">
             <div class="a-mhd">
-                <h2 id="nodeInfoTitle">장비 정보</h2>
+                <h2 id="nodeInfoTitle" style="display:flex;align-items:center;gap:8px;">장비 정보</h2>
             </div>
             <div class="a-mbd">
                 <div class="form-group">
-                    <span class="a-lbl">Pole No.</span>
-                    <input type="text" id="nodeName" placeholder="예: 전주-1234">
+                    <span class="a-lbl">Name</span>
+                    <input type="text" id="nodeName" placeholder="장비 이름을 입력하세요">
                 </div>
                 <div class="form-group">
                     <span class="a-lbl">Memo</span>
-                    <textarea id="nodeMemo" placeholder="추가 정보를 입력하세요"></textarea>
+                    <textarea id="nodeMemo" placeholder="메모를 입력하세요"></textarea>
                 </div>
                 <div class="form-group">
                     <span class="a-lbl">Connections</span>
                     <div id="connectionsList"></div>
                 </div>
-                <div id="wireMapButtonContainer" style="display: none; margin-top: 4px;">
-                    <button class="a-btn a-btn-primary" style="width:100%;" onclick="showWireMap()">
-                        📊 직선도 보기
+                <div id="wireMapButtonContainer" style="display:none;margin-top:4px;">
+                    <button class="a-btn a-btn-primary" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;" onclick="showWireMap()">
+                        <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><rect x="1" y="3" width="7" height="14" rx="1.5" stroke="white" stroke-width="1.8"/><rect x="12" y="3" width="7" height="14" rx="1.5" stroke="white" stroke-width="1.8"/><line x1="8" y1="7" x2="12" y2="7" stroke="white" stroke-width="1.5"/><line x1="8" y1="10" x2="12" y2="13" stroke="white" stroke-width="1.5"/><line x1="8" y1="13" x2="12" y2="10" stroke="white" stroke-width="1.5"/></svg>
+                        직선도 보기
                     </button>
                 </div>
             </div>
-            <div class="a-mft">
-                <button class="a-btn a-btn-green" onclick="saveNodeInfo()">저장</button>
-                <button class="a-btn a-btn-danger" onclick="deleteNode()">삭제</button>
-                <button class="a-btn a-btn-ghost" onclick="closeNodeInfoModal()">닫기</button>
+            <div class="a-mft" style="justify-content:center;">
+                <button class="a-btn a-btn-green" onclick="saveNodeInfo()" style="display:flex;align-items:center;justify-content:center;gap:6px;">
+                    <svg width="14" height="14" viewBox="0 0 20 20" fill="none"><path d="M4 10l4 4 8-8" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    저장
+                </button>
+                <button class="a-btn a-btn-danger" onclick="deleteNode()" style="display:flex;align-items:center;justify-content:center;gap:6px;">
+                    <svg width="14" height="14" viewBox="0 0 20 20" fill="none"><path d="M5 7h10l-1 10H6L5 7z" stroke="white" stroke-width="1.5"/><path d="M3 5h14" stroke="white" stroke-width="1.5" stroke-linecap="round"/><path d="M8 3h4" stroke="white" stroke-width="1.5" stroke-linecap="round"/></svg>
+                    삭제
+                </button>
+                <button class="a-btn a-btn-ghost" onclick="closeNodeInfoModal()" style="display:flex;align-items:center;justify-content:center;gap:6px;">
+                    <svg width="14" height="14" viewBox="0 0 20 20" fill="none"><line x1="5" y1="5" x2="15" y2="15" stroke="#555" stroke-width="2" stroke-linecap="round"/><line x1="15" y1="5" x2="5" y2="15" stroke="#555" stroke-width="2" stroke-linecap="round"/></svg>
+                    닫기
+                </button>
             </div>
         </div>
     </div>
@@ -1309,7 +1297,7 @@
     </div>
     
     <!-- 케이블 정보 패널 -->
-    <div id="cableInfoPanel" style="display:none; position:fixed; z-index:10001; background:white; border-radius:10px; box-shadow:0 4px 20px rgba(0,0,0,0.3); padding:15px; min-width:200px; max-width:260px;">
+    <div id="cableInfoPanel" style="display:none; position:fixed; z-index:10001; background:#fff; border-radius:12px; box-shadow:0 8px 32px rgba(26,111,212,0.18), 0 2px 8px rgba(0,0,0,0.08); padding:0; min-width:220px; max-width:240px; overflow:hidden; border:1px solid rgba(26,111,212,0.12);">
         <div id="cableInfoContent"></div>
     </div>
 
@@ -1423,12 +1411,15 @@
     <script type="text/javascript" src="//dapi.kakao.com/v2/maps/sdk.js?appkey=4f478e9f00aaf4d8b3432db26f3d1aa2&autoload=false&libraries=services"></script>
     <!-- SheetJS (Excel 출력) -->
     <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+    <script src="html2canvas.min.js"></script>
+    <script src="jspdf.umd.min.js"></script>
 
     <!-- 카카오맵 shim + 앱 모듈 -->
     <script src="cable_map_shim.js"></script>
     <script src="cable_map_data.js"></script>
     <script src="cable_map_map.js"></script>
     <script src="cable_map_ofd.js"></script>
+    <script src="cable_map_gongga.js"></script>
     <script src="cable_map_ui.js"></script>
     <script src="cable_map_wiremap.js"></script>
 
