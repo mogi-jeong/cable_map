@@ -747,7 +747,7 @@
                 }
             }
             // 함체 배치 모드에서 선택된 전주 라벨 표시
-            if (_junctionPole) labelPoleIds.add(_junctionPole.id);
+            if (_junctionPole && labelPoleIds) labelPoleIds.add(_junctionPole.id);
 
             var _offLat = window._polePreviewOffset ? window._polePreviewOffset.dLat : 0;
             var _offLng = window._polePreviewOffset ? window._polePreviewOffset.dLng : 0;
@@ -1163,7 +1163,7 @@
             node.memo = (poleNum ? '전산화번호: '+poleNum : '') + (isSelf ? '자가주:true' : '');
             node.name = document.getElementById('poleNameInput').value.trim();
             node.labelAngle  = parseInt(document.getElementById('poleLabelAngle').value)  || 0;
-            node.labelOffset = parseInt(document.getElementById('poleLabelOffset').value) ?? 20;
+            node.labelOffset = parseInt(document.getElementById('poleLabelOffset').value) || 0;
             if (window._currentPoleType) node.type = window._currentPoleType;
             saveData(); closeMenuModal();
             drawPoleCanvas(); showStatus('저장 완료');
