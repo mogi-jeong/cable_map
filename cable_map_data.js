@@ -291,8 +291,26 @@
         window.markPoleForUndo = markPoleForUndo;
         window.performUndo     = performUndo;
 
+        // IDB에서 특정 ID 목록의 전주 로드
+        async function loadPolesByIds(ids) {
+            if (!ids || !ids.length) return [];
+            var db = await getDB();
+            return new Promise(function(resolve, reject) {
+                var tx = db.transaction('poles', 'readonly');
+                var store = tx.objectStore('poles');
+                var results = [];
+                var pending = ids.length;
+                ids.forEach(function(id) {
+                    var req = store.get(id);
+                    req.onsuccess = function() { if (req.result) results.push(req.result); if (--pending === 0) resolve(results); };
+                    req.onerror = function() { if (--pending === 0) resolve(results); };
+                });
+            });
+        }
+
         window.loadPolesFromIDB  = loadPolesFromIDB;
         window.loadPolesInBounds = loadPolesInBounds;
+        window.loadPolesByIds    = loadPolesByIds;
         window.getDB             = getDB;
 
         // GitHub Pages 자동 전주 로드 (구역별 분할 파일)

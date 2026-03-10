@@ -1766,49 +1766,6 @@
             showStatus('케이블 그리기 일시정지 — 주황색 선을 클릭해 계속/삭제');
         }
 
-        function showPausedCableMenu(e) {
-            if (!_pausedCable) return;
-            L.DomEvent.stopPropagation(e);
-
-            // 기존 메뉴 제거
-            var old = document.getElementById('pausedCableMenu');
-            if (old) old.remove();
-
-            var menu = document.createElement('div');
-            menu.id = 'pausedCableMenu';
-            menu.style.cssText = 'position:fixed; z-index:10002; background:white; border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,0.3); padding:8px; display:flex; flex-direction:column; gap:4px;';
-
-            // 화면 좌표
-            var mapRect = document.getElementById('map').getBoundingClientRect();
-            var pt = map.latLngToContainerPoint(e.latlng);
-            menu.style.left = (mapRect.left + pt.x + 10) + 'px';
-            menu.style.top = (mapRect.top + pt.y - 20) + 'px';
-
-            var resumeBtn = document.createElement('button');
-            resumeBtn.style.cssText = 'padding:8px 16px; background:#e67e22; color:white; border:none; border-radius:4px; cursor:pointer; font-weight:bold; font-size:13px;';
-            resumeBtn.textContent = '계속 그리기';
-            resumeBtn.onclick = function() { menu.remove(); resumeConnecting(); };
-            menu.appendChild(resumeBtn);
-
-            var deleteBtn = document.createElement('button');
-            deleteBtn.style.cssText = 'padding:8px 16px; background:#e74c3c; color:white; border:none; border-radius:4px; cursor:pointer; font-weight:bold; font-size:13px;';
-            deleteBtn.textContent = '삭제';
-            deleteBtn.onclick = function() { menu.remove(); clearPausedCable(); showStatus('일시정지 케이블이 삭제되었습니다'); };
-            menu.appendChild(deleteBtn);
-
-            document.body.appendChild(menu);
-
-            // 바깥 클릭 시 메뉴 닫기
-            setTimeout(function() {
-                document.addEventListener('mousedown', function handler(ev) {
-                    if (!menu.contains(ev.target)) {
-                        menu.remove();
-                        document.removeEventListener('mousedown', handler);
-                    }
-                });
-            }, 50);
-        }
-
         function resumeConnecting() {
             if (!_pausedCable) return;
 
@@ -2147,7 +2104,18 @@
 
                         // 지도 이동
                         map.setView([pt.lat, pt.lng], 17);
-                        setTimeout(function() { if (_otdrMarker) _otdrMarker.openPopup(); }, 200);
+                        // bindPopup은 클릭 시 열리므로, 자동 팝업은 직접 InfoWindow로 표시
+                        setTimeout(function() {
+                            if (_otdrMarker && _otdrMarker._mr) {
+                                var pos = new kakao.maps.LatLng(_otdrMarker._lat, _otdrMarker._lng);
+                                var iw = new kakao.maps.InfoWindow({
+                                    position: pos,
+                                    content: '<div style="padding:5px;min-width:120px;font-size:12px;text-align:center;"><b>OTDR ' + Math.round(dist) + 'm</b><br>' + fromName + ' ↔ ' + toName + '<br>' + fromName + '에서 ' + pt.distFromPrev + 'm</div>',
+                                    removable: true, zIndex: 99999
+                                });
+                                iw.open(_otdrMarker._mr._m);
+                            }
+                        }, 200);
                     };
                 });
 
