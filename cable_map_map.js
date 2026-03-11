@@ -176,6 +176,8 @@
                         setTimeout(drawPoleCanvas, t);
                     });
                     scheduleRefreshPoles();
+                    // 동축 장비 심볼 크기 줌 연동
+                    if (typeof rerenderCoaxNodes === 'function') rerenderCoaxNodes();
                 });
 
                 // moveend: 위치 저장 + pole 재로드 (디바운스)
@@ -186,6 +188,8 @@
                     const z = map.getZoom();
                     localStorage.setItem('mapView', JSON.stringify({lat:c.getLat(), lng:c.getLng(), zoom:z}));
                     map.closePopup();
+                    var _nc = document.getElementById('nodeContextMenu');
+                    if (_nc) _nc.remove();
                     scheduleRefreshPoles();
                 });
 
@@ -247,7 +251,10 @@
                             if (noBtn) noBtn.click();
                             return;
                         }
-                        // 2) RN 팝업
+                        // 2) 노드 컨텍스트 메뉴
+                        var nodeCtx = document.getElementById('nodeContextMenu');
+                        if (nodeCtx) { nodeCtx.remove(); return; }
+                        // 2b) RN 팝업
                         var rnPopup = document.getElementById('rnPopup');
                         if (rnPopup) { rnPopup.remove(); return; }
                         // 3) 모달 (최상위부터 닫기)
@@ -272,6 +279,19 @@
                         // 4) 지도 팝업 (케이블 클릭 InfoWindow 등)
                         if (map) { map.closePopup(); }
                         // 5) 모드 취소
+                        // ONU 이동 모드
+                        if (window._onuMoveTarget) {
+                            window._onuMoveTarget = null;
+                            window._onuMoveClickHandler = null;
+                            hideStatus();
+                            return;
+                        }
+                        // 도면보기 모드만 ESC로 종료 (설계 모드는 X 버튼으로만)
+                        if (typeof _coaxMode !== 'undefined' && _coaxMode === 'view') {
+                            _coaxExitMode();
+                            hideStatus();
+                            return;
+                        }
                         if (connectingMode) { cancelConnecting(); return; }
                         if (addingMode) { cancelAdding(); return; }
                         if (movingNodeMode) {
@@ -289,63 +309,76 @@
                 map.on('click', function(e) {
                     if (!e || !e.latlng || e.latlng.lat == null) return; // 카카오 내부 이벤트 null 방어
                     if (typeof hideAllWaypointMarkers === 'function') hideAllWaypointMarkers();
-                    if (addingMode && addingType === 'junction') {
+                    if (addingMode && _poleSnapTypes.indexOf(addingType) !== -1) {
                         // 원이 표시 중이면 원 안/밖 판단
                         if (_junctionCircle && _junctionPole) {
                             var dist = latlngDist(e.latlng.lat, e.latlng.lng, _junctionPole.lat, _junctionPole.lng);
                             if (dist <= 20) {
-                                // 원 안 → 사용자가 클릭한 위치에 함체 생성
-                                var poleName = _junctionPole.name || '';
-                                var poleLat  = e.latlng.lat;
-                                var poleLng  = e.latlng.lng;
+                                // 원 안 → 클릭한 위치에 장비 생성
+                                var _snapPoleId = _junctionPole.id;
+                                var _snapPoleName = _junctionPole.name || '';
+                                var _snapType = addingType;
+                                var _snapLat = e.latlng.lat;
+                                var _snapLng = e.latlng.lng;
                                 clearJunctionRadius();
                                 cancelAdding();
                                 document.getElementById('junctionConfirmPopup').style.display = 'none';
-                                var junctionNode = {
+                                var newNode = {
                                     id: Date.now().toString(),
-                                    type: 'junction',
-                                    lat: poleLat, lng: poleLng,
-                                    name: poleName, fiberType: '', memo: '',
+                                    type: _snapType,
+                                    lat: _snapLat, lng: _snapLng,
+                                    name: _snapType === 'junction' ? _snapPoleName : '',
+                                    fiberType: '', memo: '',
                                     ofds: [], ports: [], rns: [],
-                                    inOrder: [], connDirections: {}
+                                    inOrder: [], connDirections: {},
+                                    snappedPoleId: _snapPoleId
                                 };
-                                nodes.push(junctionNode);
+                                nodes.push(newNode);
                                 saveData();
-                                renderNode(junctionNode);
-                                selectedNode = junctionNode;
+                                renderNode(newNode);
+                                selectedNode = newNode;
                                 showNodeInfoModalForEdit();
                             } else {
                                 // 원 밖 → 다른 전주 선택 유도
                                 showStatus('원 안에서 클릭하거나 다른 전주를 선택하세요  (ESC: 취소)');
                             }
                         } else {
-                            // 원 없이 빈 곳 클릭 → 확인 팝업
-                            var popup = document.getElementById('junctionConfirmPopup');
-                            var container = map.getContainer();
-                            var rect = container.getBoundingClientRect();
-                            var pt = map.latLngToLayerPoint(e.latlng);
-                            var px = pt.x + 10, py = pt.y + 10;
-                            if (px + 220 > rect.width)  px = pt.x - 220;
-                            if (py + 100 > rect.height) py = pt.y - 100;
-                            popup.style.left = Math.max(4, px) + 'px';
-                            popup.style.top  = Math.max(4, py) + 'px';
-                            popup.style.display = 'block';
-                            document.getElementById('junctionConfirmYes').onclick = function() {
-                                popup.style.display = 'none';
-                                cancelAdding();
-                                var node = {
-                                    id: Date.now().toString(),
-                                    type: 'junction',
-                                    lat: e.latlng.lat, lng: e.latlng.lng,
-                                    name: '', fiberType: '', memo: '',
-                                    ofds: [], ports: [], rns: [],
-                                    inOrder: [], connDirections: {}
+                            // 원 없이 빈 곳 클릭 → 확인 팝업 (함체만, 나머지는 무시)
+                            if (addingType === 'junction') {
+                                var popup = document.getElementById('junctionConfirmPopup');
+                                var container = map.getContainer();
+                                var rect = container.getBoundingClientRect();
+                                var pt = map.latLngToLayerPoint(e.latlng);
+                                var px = pt.x + 10, py = pt.y + 10;
+                                if (px + 220 > rect.width)  px = pt.x - 220;
+                                if (py + 100 > rect.height) py = pt.y - 100;
+                                popup.style.left = Math.max(4, px) + 'px';
+                                popup.style.top  = Math.max(4, py) + 'px';
+                                popup.style.display = 'block';
+                                document.getElementById('junctionConfirmYes').onclick = function() {
+                                    popup.style.display = 'none';
+                                    cancelAdding();
+                                    var node = {
+                                        id: Date.now().toString(),
+                                        type: 'junction',
+                                        lat: e.latlng.lat, lng: e.latlng.lng,
+                                        name: '', fiberType: '', memo: '',
+                                        ofds: [], ports: [], rns: [],
+                                        inOrder: [], connDirections: {}
+                                    };
+                                    nodes.push(node);
+                                    saveData();
+                                    renderNode(node);
                                 };
-                                nodes.push(node);
-                                saveData();
-                                renderNode(node);
-                            };
+                            } else {
+                                showStatus('전주를 선택해 주세요  (ESC: 취소)');
+                            }
                         }
+                        return;
+                    }
+                    // 동축 셀 경계 그리기 모드
+                    if (typeof _coaxBoundaryMode !== 'undefined' && _coaxBoundaryMode) {
+                        _coaxBoundaryAddPoint(e.latlng.lat, e.latlng.lng);
                         return;
                     }
                     if (addingMode) {
@@ -364,9 +397,33 @@
                     // 기존 컨텍스트 메뉴 제거
                     const existing = document.getElementById('mapContextMenu');
                     if (existing) existing.remove();
+                    var _nc2 = document.getElementById('nodeContextMenu');
+                    if (_nc2) _nc2.remove();
 
                     // 지도 컨테이너 기준 픽셀 좌표
                     const pt = map.latLngToLayerPoint({ lat, lng });
+
+                    // 우클릭 위치에 장비 노드가 있으면 장비 컨텍스트 메뉴 표시
+                    var hitNode = null, hitDist = 25;
+                    nodes.forEach(function(n) {
+                        if (isPoleType(n.type)) return;
+                        var np = map.latLngToLayerPoint({ lat: n.lat, lng: n.lng });
+                        var d = Math.sqrt(Math.pow(np.x - pt.x, 2) + Math.pow(np.y - pt.y, 2));
+                        if (d < hitDist) { hitDist = d; hitNode = n; }
+                    });
+                    if (hitNode) {
+                        selectedNode = hitNode;
+                        showMenuModal();
+                        return;
+                    }
+
+                    // 설계 모드에서 빈 곳 우클릭 → 동축 장비 컨텍스트 메뉴 (마우스 커서 옆)
+                    if (typeof _coaxMode !== 'undefined' && _coaxMode === 'design' && _coaxActiveOnu) {
+                        var mapEl = document.getElementById('map');
+                        var rect = mapEl ? mapEl.getBoundingClientRect() : { left: 0, top: 0 };
+                        showCoaxEquipMenu(rect.left + pt.x + 5, rect.top + pt.y + 5, lat, lng);
+                        return;
+                    }
 
                     const menu = document.createElement('div');
                     menu.id = 'mapContextMenu';
@@ -420,8 +477,8 @@
                         btn.onmouseout  = () => btn.style.background = '';
                         btn.onclick = () => {
                             menu.remove();
-                            if (item.type === 'junction') {
-                                startAddingNode('junction');
+                            if (_poleSnapTypes.indexOf(item.type) !== -1) {
+                                startAddingNode(item.type);
                             } else {
                                 addNode(lat, lng, item.type);
                             }
@@ -448,6 +505,9 @@
         }
         
         // 노드 추가 시작
+        // 전주 선택 후 배치가 필요한 장비 타입
+        var _poleSnapTypes = ['junction', 'onu', 'subscriber', 'cctv'];
+
         function startAddingNode(type) {
             // 케이블 연결 중이면 먼저 취소
             if (connectingMode) {
@@ -456,8 +516,8 @@
             addingMode = true;
             addingType = type;
             document.getElementById('cancelBtn').style.display = 'flex';
-            if (type === 'junction') {
-                showStatus('전주를 선택해 주세요');
+            if (_poleSnapTypes.indexOf(type) !== -1) {
+                showStatus('전주를 선택해 주세요  (ESC: 취소)');
             } else {
                 showStatus('지도에서 위치를 클릭하세요');
             }
@@ -551,8 +611,24 @@
                     </div>
                 `;
             }
-            // ── ONU: 전봇대 박스형 ──
+            // ── ONU: 전봇대 박스형 + 4포트 표시 ──
             if (type === 'onu') {
+                // 포트 사용 상태 확인
+                var onuNode = nodes.find(n => n.id === nodeId);
+                var usedPorts = {};
+                if (onuNode) {
+                    connections.forEach(function(c) {
+                        if ((c.nodeA === nodeId || c.nodeB === nodeId) && c.outPort) {
+                            var dir = onuNode.connDirections && onuNode.connDirections[c.id];
+                            if (dir === 'out') usedPorts[c.outPort] = true;
+                        }
+                    });
+                }
+                // 포트 색상: 사용중=주황, 비어있음=초록
+                var p1c = usedPorts[1] ? '#ff6d00' : '#00dd66';
+                var p2c = usedPorts[2] ? '#ff6d00' : '#00dd66';
+                var p3c = usedPorts[3] ? '#ff6d00' : '#00dd66';
+                var p4c = usedPorts[4] ? '#ff6d00' : '#00dd66';
                 return `
                     <div class="custom-marker">
                         <svg width="44" height="33" viewBox="0 0 48 36" style="filter:drop-shadow(0 2px 8px rgba(0,0,0,0.3));">
@@ -563,16 +639,15 @@
                             <line x1="28" y1="7" x2="28" y2="29" stroke="#8899bb" stroke-width="1"/>
                             <line x1="34" y1="7" x2="34" y2="29" stroke="#8899bb" stroke-width="1"/>
                             <line x1="40" y1="7" x2="40" y2="29" stroke="#8899bb" stroke-width="1"/>
-                            <rect x="16" y="0" width="5" height="5" rx="1" fill="#5577aa"/>
-                            <rect x="27" y="0" width="5" height="5" rx="1" fill="#5577aa"/>
-                            <rect x="8"  y="27" width="4" height="5" rx="1" fill="#5577aa"/>
-                            <rect x="15" y="27" width="4" height="5" rx="1" fill="#5577aa"/>
-                            <rect x="22" y="27" width="4" height="5" rx="1" fill="#5577aa"/>
-                            <rect x="29" y="27" width="4" height="5" rx="1" fill="#5577aa"/>
-                            <rect x="36" y="27" width="4" height="5" rx="1" fill="#5577aa"/>
-                            <circle cx="42" cy="10" r="2" fill="#00dd66"/>
-                            <circle cx="42" cy="18" r="2" fill="#00dd66"/>
-                            <circle cx="42" cy="26" r="2" fill="#ffaa00"/>
+                            <!-- OUT 포트 표시 (4 모서리) -->
+                            <circle cx="5"  cy="7"  r="3" fill="${p1c}" stroke="#fff" stroke-width="1"/>
+                            <text x="5"  y="9"  text-anchor="middle" font-size="5" fill="#fff" font-weight="bold">1</text>
+                            <circle cx="43" cy="7"  r="3" fill="${p2c}" stroke="#fff" stroke-width="1"/>
+                            <text x="43" y="9"  text-anchor="middle" font-size="5" fill="#fff" font-weight="bold">2</text>
+                            <circle cx="5"  cy="29" r="3" fill="${p3c}" stroke="#fff" stroke-width="1"/>
+                            <text x="5"  y="31" text-anchor="middle" font-size="5" fill="#fff" font-weight="bold">3</text>
+                            <circle cx="43" cy="29" r="3" fill="${p4c}" stroke="#fff" stroke-width="1"/>
+                            <text x="43" y="31" text-anchor="middle" font-size="5" fill="#fff" font-weight="bold">4</text>
                         </svg>
                         ${name ? `<div class="marker-label">${name}</div>` : ''}
                     </div>
@@ -650,9 +725,13 @@
         function renderNode(node) {
             // 전주는 Canvas 레이어로 처리 — DOM 마커 생성 안 함
             if (isPoleType(node.type)) {
-                // nodes 배열에 이미 있으므로 데이터 등록만
-                // 실제 그리기는 drawPoleCanvas()에서 일괄 처리
                 drawPoleCanvas();
+                return;
+            }
+
+            // 동축 장비는 별도 렌더러
+            if (typeof isCoaxType === 'function' && isCoaxType(node.type)) {
+                renderCoaxNode(node);
                 return;
             }
 
@@ -690,6 +769,8 @@
                 renderNode(node);
             });
             drawPoleCanvas();
+            // 동축 셀 경계 렌더
+            if (typeof coaxRenderAllBoundaries === 'function') coaxRenderAllBoundaries();
         }
 
         // ── Canvas 전주 렌더러 ──────────────────────────────────────
@@ -857,6 +938,8 @@
             ctx.restore();
         }
         window.drawPoleCanvas = drawPoleCanvas;
+        window.refreshPoles = refreshPoles;
+        window.scheduleRefreshPoles = scheduleRefreshPoles;
         window.renderAllNodes = renderAllNodes;
 
         // Canvas 클릭 감지 초기화 (initMap 이후 호출)
@@ -866,6 +949,9 @@
                 if (!map || !map._m) return;
                 // 장비 마커 클릭이면 전주 무시 (장비 > 케이블 > 전주)
                 if (window._nodeJustClicked) return;
+                // 모달이 열려있으면 전주 클릭 무시 (모달 버튼 클릭 전파 방지)
+                var activeModal = document.querySelector('.modal.active');
+                if (activeModal) return;
                 var target = e.target;
                 while (target && target !== mapEl) {
                     if (target.classList && (target.classList.contains('custom-marker') || target.classList.contains('custom-div-icon'))) return;
@@ -877,14 +963,19 @@
                 var zoom = map.getZoom();
                 if (zoom < 13) return;
                 // 근처에 장비 마커가 있으면 전주 무시 (클릭 우선순위: 장비 > 전주)
-                var equipHit = false;
-                nodes.forEach(function(node) {
-                    if (isPoleType(node.type)) return;
-                    var pt = map.latLngToLayerPoint({ lat: node.lat, lng: node.lng });
-                    var d = Math.sqrt(Math.pow(pt.x - mx, 2) + Math.pow(pt.y - my, 2));
-                    if (d < 20) equipHit = true;
-                });
-                if (equipHit) return;
+                // 단, 동축 배치 모드에서는 전주 우선
+                var _isCoaxPlacing = (typeof _coaxPlacingType !== 'undefined' && _coaxPlacingType);
+                var _isPoleSnapAdding = (addingMode && _poleSnapTypes.indexOf(addingType) !== -1);
+                if (!_isCoaxPlacing && !_isPoleSnapAdding) {
+                    var equipHit = false;
+                    nodes.forEach(function(node) {
+                        if (isPoleType(node.type)) return;
+                        var pt = map.latLngToLayerPoint({ lat: node.lat, lng: node.lng });
+                        var d = Math.sqrt(Math.pow(pt.x - mx, 2) + Math.pow(pt.y - my, 2));
+                        if (d < 20) equipHit = true;
+                    });
+                    if (equipHit) return;
+                }
                 var hit = null, bestDist = 12; // 클릭 반경 12px
                 nodes.forEach(function(node) {
                     if (!isPoleType(node.type)) return;
@@ -894,6 +985,9 @@
                 });
                 if (hit) {
                     // 임시 그리기/케이블 연결 모드에서는 전주 팝업 차단 (스냅은 별도 처리)
+                    // 동축 경계 그리기 모드에서는 전주 클릭 무시 (다각형 점 추가 우선)
+                    if (typeof _coaxBoundaryMode !== 'undefined' && _coaxBoundaryMode) return;
+                    // 단, 동축 배치 모드에서는 전주 클릭 허용
                     if (window._tempDrawMode || window.connectingMode) return;
                     window._nodeJustClicked = true;
                     clearTimeout(window._nodeClickTimer);
@@ -973,9 +1067,11 @@
             return t==='pole'||t==='pole_existing'||t==='pole_new'||t==='pole_removed';
         }
 
-        // 함체 위치 선택용 원 오버레이
+        // 장비 위치 선택용 원 오버레이
         var _junctionCircle = null;
         var _junctionPole   = null;
+
+        var _equipTypeLabels = { junction: '함체', onu: 'ONU', subscriber: '가입자', cctv: 'CCTV' };
 
         function showJunctionRadius(poleNode) {
             _junctionPole = poleNode;
@@ -992,7 +1088,8 @@
             });
             _junctionCircle.setMap(map._m);
             drawPoleCanvas();
-            showStatus('원 안에서 함체 위치를 클릭하세요  (ESC: 취소)');
+            var typeLabel = _equipTypeLabels[addingType] || '장비';
+            showStatus('원 안에서 ' + typeLabel + ' 위치를 클릭하세요  (ESC: 취소)');
         }
 
         function clearJunctionRadius() {
@@ -1013,13 +1110,30 @@
         }
 
         function onNodeClick(node) {
+            // 도면보기 모드: 동축 장비 클릭 차단
+            if (typeof _coaxMode !== 'undefined' && _coaxMode === 'view' && typeof isCoaxType === 'function' && isCoaxType(node.type)) {
+                showStatus('도면보기 모드에서는 편집할 수 없습니다 (ESC: 종료)');
+                return;
+            }
             // 지도 click 이벤트와 중복 방지
             window._nodeJustClicked = true;
             clearTimeout(window._nodeClickTimer);
             window._nodeClickTimer = setTimeout(function(){ window._nodeJustClicked = false; }, 600);
 
-            // junction 추가 모드
-            if (addingMode && addingType === 'junction') {
+            // ONU 장비 이동 모드: 전주 클릭
+            if (window._onuMoveTarget && window._onuMoveClickHandler) {
+                window._onuMoveClickHandler(node);
+                return;
+            }
+
+            // 동축 장비 배치 모드: 전주 클릭 시 장비 배치
+            if (typeof _coaxPlacingType !== 'undefined' && _coaxPlacingType && isPoleType(node.type)) {
+                coaxPlaceOnPole(node);
+                return;
+            }
+
+            // 전주 스냅 장비 추가 모드 (함체/ONU/가입자/CCTV)
+            if (addingMode && _poleSnapTypes.indexOf(addingType) !== -1) {
                 if (isPoleType(node.type)) {
                     document.getElementById('junctionConfirmPopup').style.display = 'none';
                     showJunctionRadius(node);
@@ -1043,6 +1157,8 @@
                         : node.type === 'onu'        ? '[ONU]'
                         : node.type === 'subscriber' ? '[가입자]'
                         : node.type === 'cctv'       ? '[CCTV]'
+                        : (typeof isCoaxType === 'function' && isCoaxType(node.type))
+                            ? '[' + (typeof COAX_EQUIP_TYPES !== 'undefined' && COAX_EQUIP_TYPES[node.type] ? COAX_EQUIP_TYPES[node.type].label : '동축') + ']'
                         : '';
                     showConfirm(
                         typeLabel + " '" + (node.name || '이름없음') + "'에 연결하시겠습니까?",
@@ -1064,6 +1180,7 @@
                     showStatus('같은 장비는 연결할 수 없습니다');
                 }
             } else {
+                closeMenuModal();
                 selectedNode = node;
                 if (isPoleType(node.type)) {
                     showPoleModal(node);
@@ -1316,7 +1433,7 @@
             // 임시로 node에 적용 후 캔버스 다시 그림 (저장은 하지 않음)
             var orig = { labelAngle: node.labelAngle, labelOffset: node.labelOffset };
             node.labelAngle  = parseFloat(angle)  || 0;
-            node.labelOffset = parseFloat(offset) != null ? parseFloat(offset) : 20;
+            node.labelOffset = isNaN(parseFloat(offset)) ? 20 : parseFloat(offset);
             drawPoleCanvas();
             node.labelAngle  = orig.labelAngle;
             node.labelOffset = orig.labelOffset;
@@ -1353,111 +1470,138 @@
 
         // 메뉴 모달 표시
         function showMenuModal() {
-            const menuButtons = document.getElementById('menuButtons');
-            menuButtons.innerHTML = '';
+            // 기존 컨텍스트 메뉴 제거
+            closeMenuModal();
+            var _mc = document.getElementById('mapContextMenu');
+            if (_mc) _mc.remove();
 
-            // 기설/신설 토글: junction일 때만 표시
-            const toggle = document.getElementById('junctionTypeToggle');
-            if (toggle) {
-            if (selectedNode && selectedNode.type === 'junction') {
-                toggle.style.display = 'flex';
-                _updateJunctionTypeUI(selectedNode.isNew ? 'new' : 'existing');
+            var node = selectedNode;
+            if (!node) return;
+
+            // 노드 위치를 화면 좌표로 변환
+            var pt = map.latLngToLayerPoint({ lat: node.lat, lng: node.lng });
+
+            var menu = document.createElement('div');
+            menu.id = 'nodeContextMenu';
+            menu.style.cssText = 'position:absolute;left:' + pt.x + 'px;top:' + pt.y + 'px;background:white;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.25);z-index:99999;min-width:160px;overflow:hidden;font-family:"Segoe UI",sans-serif;';
+
+            // 아이콘 SVGs (20x20 작은 사이즈)
+            var icons = {
+                info: '<svg width="18" height="18" viewBox="0 0 40 40"><rect x="7" y="4" width="26" height="32" rx="3" fill="none" stroke="#555" stroke-width="2.5"/><line x1="13" y1="13" x2="27" y2="13" stroke="#555" stroke-width="2" stroke-linecap="round"/><line x1="13" y1="19" x2="27" y2="19" stroke="#555" stroke-width="2" stroke-linecap="round"/><line x1="13" y1="25" x2="21" y2="25" stroke="#555" stroke-width="2" stroke-linecap="round"/></svg>',
+                ofd: '<svg width="18" height="18" viewBox="0 0 40 40"><rect x="5" y="4" width="22" height="28" rx="2" fill="none" stroke="#9b59b6" stroke-width="2.5"/><rect x="8" y="9" width="13" height="2.5" rx="1" fill="#9b59b6" opacity="0.7"/><rect x="8" y="14" width="13" height="2.5" rx="1" fill="#9b59b6" opacity="0.5"/><circle cx="30" cy="30" r="7" fill="#9b59b6" opacity="0.15" stroke="#9b59b6" stroke-width="1.5"/><circle cx="30" cy="27" r="1.5" fill="#9b59b6"/><circle cx="30" cy="30" r="1.5" fill="#9b59b6"/><circle cx="30" cy="33" r="1.5" fill="#9b59b6"/></svg>',
+                cable: '<svg width="18" height="18" viewBox="0 0 40 40"><circle cx="8" cy="20" r="4" fill="none" stroke="#3498db" stroke-width="2.5"/><circle cx="32" cy="20" r="4" fill="none" stroke="#3498db" stroke-width="2.5"/><path d="M12,20 Q20,8 28,20" fill="none" stroke="#3498db" stroke-width="2.5" stroke-linecap="round"/></svg>',
+                wire: '<svg width="18" height="18" viewBox="0 0 40 40"><rect x="4" y="6" width="13" height="28" rx="2" fill="none" stroke="#27ae60" stroke-width="2.5"/><rect x="23" y="6" width="13" height="28" rx="2" fill="none" stroke="#27ae60" stroke-width="2.5"/><line x1="17" y1="14" x2="23" y2="14" stroke="#27ae60" stroke-width="2"/><line x1="17" y1="20" x2="23" y2="20" stroke="#27ae60" stroke-width="2"/><line x1="17" y1="26" x2="23" y2="26" stroke="#27ae60" stroke-width="2"/></svg>',
+                move: '<svg width="18" height="18" viewBox="0 0 40 40"><path d="M20,5 L20,35 M5,20 L35,20" stroke="#e67e22" stroke-width="2.5" stroke-linecap="round"/><polyline points="15,10 20,5 25,10" fill="none" stroke="#e67e22" stroke-width="2.5" stroke-linejoin="round"/><polyline points="15,30 20,35 25,30" fill="none" stroke="#e67e22" stroke-width="2.5" stroke-linejoin="round"/><polyline points="10,15 5,20 10,25" fill="none" stroke="#e67e22" stroke-width="2.5" stroke-linejoin="round"/><polyline points="30,15 35,20 30,25" fill="none" stroke="#e67e22" stroke-width="2.5" stroke-linejoin="round"/></svg>',
+                del: '<svg width="18" height="18" viewBox="0 0 40 40"><rect x="10" y="15" width="20" height="2.5" rx="1" fill="#e74c3c"/><rect x="15" y="8" width="10" height="7" rx="2" fill="none" stroke="#e74c3c" stroke-width="2"/><rect x="11" y="18" width="18" height="16" rx="2" fill="#e74c3c" opacity="0.15" stroke="#e74c3c" stroke-width="2"/><line x1="16" y1="22" x2="16" y2="30" stroke="#e74c3c" stroke-width="2" stroke-linecap="round"/><line x1="20" y1="22" x2="20" y2="30" stroke="#e74c3c" stroke-width="2" stroke-linecap="round"/><line x1="24" y1="22" x2="24" y2="30" stroke="#e74c3c" stroke-width="2" stroke-linecap="round"/></svg>',
+                cell: '<svg width="18" height="18" viewBox="0 0 40 40"><polygon points="20,4 34,12 34,28 20,36 6,28 6,12" fill="none" stroke="#9C27B0" stroke-width="2.5"/><circle cx="20" cy="20" r="3" fill="#9C27B0"/></svg>',
+                boundary: '<svg width="18" height="18" viewBox="0 0 40 40"><polygon points="8,30 5,14 16,5 30,8 35,22 28,34 14,35" fill="#9C27B0" fill-opacity="0.15" stroke="#9C27B0" stroke-width="2" stroke-dasharray="4,2"/><circle cx="8" cy="30" r="2" fill="#9C27B0"/><circle cx="16" cy="5" r="2" fill="#9C27B0"/></svg>',
+                link: '<svg width="18" height="18" viewBox="0 0 40 40"><path d="M16,12 L12,16 Q8,20 12,24 L16,28" fill="none" stroke="#FF6D00" stroke-width="2.5" stroke-linecap="round"/><path d="M24,12 L28,16 Q32,20 28,24 L24,28" fill="none" stroke="#FF6D00" stroke-width="2.5" stroke-linecap="round"/><line x1="16" y1="20" x2="24" y2="20" stroke="#FF6D00" stroke-width="2.5" stroke-linecap="round"/></svg>'
+            };
+
+            function addItem(icon, label, onclick, opts) {
+                var btn = document.createElement('div');
+                var isDanger = opts && opts.danger;
+                var isSep = opts && opts.separator;
+                btn.style.cssText = 'padding:9px 14px;cursor:pointer;font-size:13px;font-weight:600;color:' + (isDanger ? '#e74c3c' : '#333') + ';border-bottom:1px solid ' + (isSep ? '#e0e0e0' : '#f5f5f5') + ';display:flex;align-items:center;gap:8px;';
+                btn.innerHTML = icon + '<span>' + label + '</span>';
+                btn.onmouseover = function() { btn.style.background = isDanger ? '#fff5f5' : '#f0f4ff'; };
+                btn.onmouseout = function() { btn.style.background = ''; };
+                btn.onclick = function() { closeMenuModal(); onclick(); };
+                menu.appendChild(btn);
+            }
+
+            // 기설/신설 토글: junction일 때
+            if (node.type === 'junction') {
+                var toggleDiv = document.createElement('div');
+                toggleDiv.style.cssText = 'display:flex;gap:0;border-bottom:2px solid #e0e0e0;';
+                var isNew = node.isNew;
+                ['기설','신설'].forEach(function(lbl, i) {
+                    var tb = document.createElement('div');
+                    var active = (i === 0 && !isNew) || (i === 1 && isNew);
+                    tb.style.cssText = 'flex:1;padding:8px 0;text-align:center;font-size:12px;font-weight:700;cursor:pointer;color:' + (active ? 'white' : (i === 0 ? '#1a6fd4' : '#e53935')) + ';background:' + (active ? (i === 0 ? '#1a6fd4' : '#e53935') : 'white') + ';';
+                    tb.textContent = lbl;
+                    tb.onclick = function() {
+                        closeMenuModal();
+                        setJunctionType(i === 0 ? 'existing' : 'new');
+                    };
+                    toggleDiv.appendChild(tb);
+                });
+                menu.appendChild(toggleDiv);
+            }
+
+            // 노드 타입별 메뉴 아이템
+            if (node.type === 'datacenter') {
+                addItem(icons.info, '접속정보', showNodeInfo);
+                addItem(icons.ofd, 'OFD 관리', showOFDModal);
+                addItem(icons.cable, '케이블 연결', startConnecting);
+                addItem(icons.move, '장비 이동', startMovingNode, {separator:true});
+                addItem(icons.del, '장비 삭제', deleteNodeFromMenu, {danger:true});
+            } else if (node.type === 'onu' && typeof _coaxMode !== 'undefined' && _coaxMode === 'design') {
+                // 설계 모드 ONU 메뉴
+                addItem(icons.cable, '케이블 추가', function() { showOnuPortSelect(selectedNode); });
+                // 장비 추가 아이콘
+                var iconAdd = '<svg width="18" height="18" viewBox="0 0 40 40"><circle cx="20" cy="20" r="14" fill="none" stroke="#9C27B0" stroke-width="2.5"/><line x1="20" y1="12" x2="20" y2="28" stroke="#9C27B0" stroke-width="2.5" stroke-linecap="round"/><line x1="12" y1="20" x2="28" y2="20" stroke="#9C27B0" stroke-width="2.5" stroke-linecap="round"/></svg>';
+                addItem(iconAdd, '장비 추가', function() { coaxSelectOnu(selectedNode); });
+                addItem(icons.move, '장비 이동', function() { startMovingNodeToPole(selectedNode); }, {separator:true});
+                addItem(icons.del, '장비 삭제', function() { deleteOnuWithCell(selectedNode); }, {danger:true});
+            } else if (node.type === 'onu') {
+                // 일반 모드 ONU 메뉴
+                addItem(icons.info, '접속정보', showNodeInfo);
+                var iconView = '<svg width="18" height="18" viewBox="0 0 40 40"><circle cx="20" cy="20" r="12" fill="none" stroke="#0055ff" stroke-width="2.5"/><circle cx="20" cy="20" r="4" fill="#0055ff"/><path d="M4,20 Q20,6 36,20 Q20,34 4,20Z" fill="none" stroke="#0055ff" stroke-width="2"/></svg>';
+                addItem(iconView, '도면보기', function() { coaxEnterViewMode(selectedNode); });
+                var iconDesign = '<svg width="18" height="18" viewBox="0 0 40 40"><path d="M8,32 L28,12 L32,16 L12,36 L6,38Z" fill="none" stroke="#FF6D00" stroke-width="2.5" stroke-linejoin="round"/><line x1="26" y1="14" x2="30" y2="18" stroke="#FF6D00" stroke-width="2"/><circle cx="30" cy="10" r="3" fill="#FF6D00" opacity="0.3"/></svg>';
+                addItem(iconDesign, '설계', function() { coaxEnterDesignMode(selectedNode); });
+                var iconExtract = '<svg width="18" height="18" viewBox="0 0 40 40"><rect x="6" y="4" width="20" height="28" rx="2" fill="none" stroke="#27ae60" stroke-width="2.5"/><line x1="11" y1="12" x2="21" y2="12" stroke="#27ae60" stroke-width="2"/><line x1="11" y1="18" x2="21" y2="18" stroke="#27ae60" stroke-width="2"/><line x1="11" y1="24" x2="17" y2="24" stroke="#27ae60" stroke-width="2"/><path d="M28,18 L34,24 L28,30" fill="none" stroke="#27ae60" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+                addItem(iconExtract, '공가추출', function() { coaxExtractGongga(selectedNode); });
+                addItem(icons.move, '장비 이동', function() { startMovingNodeToPole(selectedNode); }, {separator:true});
+                addItem(icons.del, '장비 삭제', function() { deleteOnuWithCell(selectedNode); }, {danger:true});
+            } else if (typeof isCoaxType === 'function' && isCoaxType(node.type)) {
+                addItem(icons.link, '같은전주 연결', function() { coaxSamePoleConnect(selectedNode); });
+                addItem(icons.cable, '동축 연결', startConnecting);
+                addItem(icons.move, '장비 이동', startMovingNode, {separator:true});
+                addItem(icons.del, '장비 삭제', deleteNodeFromMenu, {danger:true});
             } else {
-                toggle.style.display = 'none';
-            }
-            }
-
-            function makeBtn(svgPath, label, onclick, danger=false) {
-                const btn = document.createElement('button');
-                btn.className = 'menu-btn' + (danger ? ' danger' : '');
-                btn.innerHTML = svgPath + `<span>${label}</span>`;
-                btn.onclick = onclick;
-                return btn;
+                addItem(icons.info, '접속정보', showNodeInfo);
+                addItem(icons.cable, '케이블 연결', startConnecting);
+                addItem(icons.wire, '직선도', function() { showWireMapFromMenu(); });
+                addItem(icons.move, '장비 이동', startMovingNode, {separator:true});
+                addItem(icons.del, '장비 삭제', deleteNodeFromMenu, {danger:true});
             }
 
-            // OFD SVG
-            const svgOFD = `<svg width="28" height="28" viewBox="0 0 40 40">
-                <rect x="5" y="4" width="22" height="28" rx="2" fill="none" stroke="#9b59b6" stroke-width="2"/>
-                <rect x="8" y="9" width="13" height="2.5" rx="1" fill="#9b59b6" opacity="0.7"/>
-                <rect x="8" y="14" width="13" height="2.5" rx="1" fill="#9b59b6" opacity="0.5"/>
-                <rect x="8" y="19" width="9" height="2.5" rx="1" fill="#9b59b6" opacity="0.4"/>
-                <circle cx="30" cy="30" r="8" fill="#9b59b6" opacity="0.15" stroke="#9b59b6" stroke-width="1.5"/>
-                <circle cx="30" cy="27" r="1.5" fill="#9b59b6"/>
-                <circle cx="30" cy="30" r="1.5" fill="#9b59b6"/>
-                <circle cx="30" cy="33" r="1.5" fill="#9b59b6"/>
-            </svg>`;
-            // 케이블 SVG
-            const svgCable = `<svg width="28" height="28" viewBox="0 0 40 40">
-                <circle cx="8" cy="20" r="4" fill="none" stroke="#3498db" stroke-width="2"/>
-                <circle cx="32" cy="20" r="4" fill="none" stroke="#3498db" stroke-width="2"/>
-                <path d="M12,20 Q20,8 28,20" fill="none" stroke="#3498db" stroke-width="2.2" stroke-linecap="round"/>
-                <path d="M12,20 Q20,32 28,20" fill="none" stroke="#3498db" stroke-width="1.5" stroke-linecap="round" opacity="0.5"/>
-            </svg>`;
-            // 직선도 SVG
-            const svgWire = `<svg width="28" height="28" viewBox="0 0 40 40">
-                <rect x="4" y="6" width="13" height="28" rx="2" fill="none" stroke="#27ae60" stroke-width="2"/>
-                <rect x="23" y="6" width="13" height="28" rx="2" fill="none" stroke="#27ae60" stroke-width="2"/>
-                <line x1="17" y1="14" x2="23" y2="14" stroke="#27ae60" stroke-width="1.8"/>
-                <line x1="17" y1="20" x2="23" y2="20" stroke="#27ae60" stroke-width="1.8"/>
-                <line x1="17" y1="26" x2="23" y2="26" stroke="#27ae60" stroke-width="1.8"/>
-                <circle cx="17" cy="14" r="1.5" fill="#27ae60"/>
-                <circle cx="23" cy="14" r="1.5" fill="#27ae60"/>
-                <circle cx="17" cy="20" r="1.5" fill="#27ae60"/>
-                <circle cx="23" cy="20" r="1.5" fill="#27ae60"/>
-                <circle cx="17" cy="26" r="1.5" fill="#27ae60"/>
-                <circle cx="23" cy="26" r="1.5" fill="#27ae60"/>
-            </svg>`;
-            // 접속정보 SVG
-            const svgInfo = `<svg width="28" height="28" viewBox="0 0 40 40">
-                <rect x="7" y="4" width="26" height="32" rx="3" fill="none" stroke="#555" stroke-width="2"/>
-                <line x1="13" y1="13" x2="27" y2="13" stroke="#555" stroke-width="2" stroke-linecap="round"/>
-                <line x1="13" y1="19" x2="27" y2="19" stroke="#555" stroke-width="2" stroke-linecap="round"/>
-                <line x1="13" y1="25" x2="21" y2="25" stroke="#555" stroke-width="2" stroke-linecap="round"/>
-            </svg>`;
-            // 이동 SVG
-            const svgMove = `<svg width="28" height="28" viewBox="0 0 40 40">
-                <path d="M20,5 L20,35 M5,20 L35,20" stroke="#e67e22" stroke-width="2.2" stroke-linecap="round"/>
-                <polyline points="15,10 20,5 25,10" fill="none" stroke="#e67e22" stroke-width="2" stroke-linejoin="round"/>
-                <polyline points="15,30 20,35 25,30" fill="none" stroke="#e67e22" stroke-width="2" stroke-linejoin="round"/>
-                <polyline points="10,15 5,20 10,25" fill="none" stroke="#e67e22" stroke-width="2" stroke-linejoin="round"/>
-                <polyline points="30,15 35,20 30,25" fill="none" stroke="#e67e22" stroke-width="2" stroke-linejoin="round"/>
-            </svg>`;
-            // 삭제 SVG
-            const svgDel = `<svg width="28" height="28" viewBox="0 0 40 40">
-                <rect x="10" y="15" width="20" height="2.5" rx="1" fill="#e74c3c"/>
-                <rect x="15" y="8" width="10" height="7" rx="2" fill="none" stroke="#e74c3c" stroke-width="2"/>
-                <rect x="11" y="18" width="18" height="16" rx="2" fill="#e74c3c" opacity="0.15" stroke="#e74c3c" stroke-width="1.8"/>
-                <line x1="16" y1="22" x2="16" y2="30" stroke="#e74c3c" stroke-width="1.8" stroke-linecap="round"/>
-                <line x1="20" y1="22" x2="20" y2="30" stroke="#e74c3c" stroke-width="1.8" stroke-linecap="round"/>
-                <line x1="24" y1="22" x2="24" y2="30" stroke="#e74c3c" stroke-width="1.8" stroke-linecap="round"/>
-            </svg>`;
+            // 마지막 아이템 border-bottom 제거
+            if (menu.lastChild) menu.lastChild.style.borderBottom = 'none';
 
-            if (selectedNode && selectedNode.type === 'datacenter') {
-                menuButtons.appendChild(makeBtn(svgInfo, '접속정보', showNodeInfo));
-                menuButtons.appendChild(makeBtn(svgOFD, 'OFD 관리', showOFDModal));
-                menuButtons.appendChild(makeBtn(svgCable, '케이블 연결', startConnecting));
-                menuButtons.appendChild(makeBtn(svgMove, '장비 이동', startMovingNode));
-                menuButtons.appendChild(makeBtn(svgDel, '장비 삭제', deleteNodeFromMenu, true));
-            } else {
-                menuButtons.appendChild(makeBtn(svgInfo, '접속정보', showNodeInfo));
-                menuButtons.appendChild(makeBtn(svgCable, '케이블 연결', startConnecting));
-                menuButtons.appendChild(makeBtn(svgWire, '직선도', () => { closeMenuModal(); showWireMapFromMenu(); }));
-                menuButtons.appendChild(makeBtn(svgMove, '장비 이동', startMovingNode));
-                menuButtons.appendChild(makeBtn(svgDel, '장비 삭제', deleteNodeFromMenu, true));
-            }
+            // 지도 컨테이너에 추가
+            map.getContainer().style.position = 'relative';
+            map.getContainer().appendChild(menu);
 
-            document.getElementById('menuModal').classList.add('active');
+            // 화면 밖 보정
+            requestAnimationFrame(function() {
+                var container = map.getContainer();
+                var rect = menu.getBoundingClientRect();
+                var cRect = container.getBoundingClientRect();
+                if (rect.right > cRect.right) menu.style.left = (parseInt(menu.style.left) - (rect.right - cRect.right) - 8) + 'px';
+                if (rect.bottom > cRect.bottom) menu.style.top = (parseInt(menu.style.top) - (rect.bottom - cRect.bottom) - 8) + 'px';
+            });
+
+            // 바깥 클릭 시 닫기
+            setTimeout(function() {
+                document.addEventListener('click', function _closeCtx(e) {
+                    if (menu.contains(e.target)) return;
+                    closeMenuModal();
+                    document.removeEventListener('click', _closeCtx);
+                });
+            }, 0);
         }
-        
+
         // 메뉴 모달 닫기
         function closeMenuModal() {
-            document.getElementById('menuModal').classList.remove('active');
-            const _jtt = document.getElementById('junctionTypeToggle');
-            if (_jtt) _jtt.style.display = 'none';
-            const title = document.getElementById('menuModalTitle');
-            if (title) title.innerHTML = '선택하세요';
-            const mb = document.getElementById('menuButtons');
-            if (mb) mb.style.display = '';
+            // 컨텍스트 메뉴 제거
+            var ctx = document.getElementById('nodeContextMenu');
+            if (ctx) ctx.remove();
+            // 레거시 모달도 닫기
+            var modal = document.getElementById('menuModal');
+            if (modal) modal.classList.remove('active');
         }
 
         function _updateJunctionTypeUI(type) {

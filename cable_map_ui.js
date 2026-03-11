@@ -19,6 +19,12 @@
             document.getElementById('nodeName').value = selectedNode.name || '';
             document.getElementById('nodeMemo').value = selectedNode.memo || '';
 
+            // ONU일 때 NAME 라벨을 CELL_NAME으로 변경 + placeholder 빈칸
+            var nameLabelEl = document.querySelector('#nodeInfoModal .form-group .a-lbl');
+            var nameInput = document.getElementById('nodeName');
+            if (nameLabelEl) nameLabelEl.textContent = selectedNode.type === 'onu' ? 'Cell_Name' : 'Name';
+            if (nameInput) nameInput.placeholder = selectedNode.type === 'onu' ? '' : '장비 이름을 입력하세요';
+
             // 연결 목록 표시
             const connectionsList = document.getElementById('connectionsList');
             connectionsList.innerHTML = '';
@@ -372,6 +378,7 @@
         let snapCircleOverlay = null;
         let snapHighlight = null;
         const SNAP_RADIUS_M = 10;
+        // COAX_SNAP_RADIUS_M, _isCoaxDesignConnecting() → cable_map_coax.js로 이동
 
         function startConnecting() {
             closeMenuModal();
@@ -382,7 +389,11 @@
             // 커서 변경
             if (window._setMapCursorMode) window._setMapCursorMode('crosshair');
             else { const mapEl = document.getElementById('map'); if (mapEl) mapEl.style.cursor = 'crosshair'; }
-            showStatus('경유점을 찍고 도착 장비를 클릭하세요 (Space=일시정지, ESC=취소)');
+            if (_isCoaxDesignConnecting()) {
+                showStatus('전주를 클릭하여 케이블 경로를 지정하세요 (Space=일시정지, ESC=취소)');
+            } else {
+                showStatus('경유점을 찍고 도착 장비를 클릭하세요 (Space=일시정지, ESC=취소)');
+            }
             map.off('click', onMapClickForWaypoint);
             map.on('click', onMapClickForWaypoint);
             window._mousemoveHandler = onMapMousemoveForSnap;
@@ -399,15 +410,18 @@
         }
 
         // 반경 내 가장 가까운 전주
-        function findNearestPole(lat, lng) {
+        function findNearestPoleR(lat, lng, radius) {
             const off = window._polePreviewOffset || { dLat: 0, dLng: 0 };
             const poles = nodes.filter(n => n.type==='pole'||n.type==='pole_existing'||n.type==='pole_new'||n.type==='pole_removed');
             let best=null, bestDist=Infinity;
             poles.forEach(p => {
                 const d = distanceM(lat,lng,p.lat+off.dLat,p.lng+off.dLng);
-                if (d<=SNAP_RADIUS_M && d<bestDist) { bestDist=d; best=p; }
+                if (d<=radius && d<bestDist) { bestDist=d; best=p; }
             });
             return best;
+        }
+        function findNearestPole(lat, lng) {
+            return findNearestPoleR(lat, lng, SNAP_RADIUS_M);
         }
 
         // 마우스 이동: 스냅 원 표시
@@ -416,9 +430,10 @@
             const lat=me.latLng.getLat(), lng=me.latLng.getLng();
             if (snapCircleOverlay) { snapCircleOverlay.setMap(null); snapCircleOverlay=null; }
             if (snapHighlight) { snapHighlight.setMap(null); snapHighlight=null; }
-            const nearPole = findNearestPole(lat,lng);
+            var _snapR = _isCoaxDesignConnecting() ? COAX_SNAP_RADIUS_M : SNAP_RADIUS_M;
+            const nearPole = findNearestPoleR(lat,lng,_snapR);
             snapCircleOverlay = new kakao.maps.Circle({
-                map:map._m, center:new kakao.maps.LatLng(lat,lng), radius:SNAP_RADIUS_M,
+                map:map._m, center:new kakao.maps.LatLng(lat,lng), radius:_snapR,
                 strokeWeight:1, strokeColor:nearPole?'#00cc44':'#aaaaaa', strokeOpacity:0.8,
                 fillColor:nearPole?'#00cc44':'#cccccc', fillOpacity:0.15
             });
@@ -452,12 +467,17 @@
             let best = null, bestDist = Infinity;
             nodes.forEach(function(n) {
                 if (n.id === connectingFromNode.id) return;
-                if (n.type !== 'junction' && n.type !== 'datacenter' && n.type !== 'onu' && n.type !== 'subscriber' && n.type !== 'cctv') return;
+                var isEquip = n.type === 'junction' || n.type === 'datacenter' || n.type === 'onu'
+                    || n.type === 'subscriber' || n.type === 'cctv'
+                    || (typeof isCoaxType === 'function' && isCoaxType(n.type));
+                if (!isEquip) return;
                 const d = distanceM(lat, lng, n.lat, n.lng);
                 if (d <= JUNCTION_SNAP_RADIUS_M && d < bestDist) { bestDist = d; best = n; }
             });
             return best;
         }
+
+        // _coaxRouteLabel, _showCoaxRouteLabel(), _clearCoaxRouteLabel() → cable_map_coax.js로 이동
 
         let _lastWaypointClick = 0;
         function onMapClickForWaypoint(e) {
@@ -468,6 +488,11 @@
             _lastWaypointClick = _now;
             let lat = e.latlng.lat, lng = e.latlng.lng;
 
+            // 이전 경유 라벨 제거
+            _clearCoaxRouteLabel();
+
+            var isCoaxDesign = _isCoaxDesignConnecting();
+
             // 근처 함체/장비 감지 → 연결 여부 팝업
             const nearJunction = findNearestJunction(lat, lng);
             if (nearJunction) {
@@ -477,6 +502,8 @@
                     : nearJunction.type === 'onu'        ? '[ONU]'
                     : nearJunction.type === 'subscriber' ? '[가입자]'
                     : nearJunction.type === 'cctv'       ? '[CCTV]'
+                    : (typeof isCoaxType === 'function' && isCoaxType(nearJunction.type))
+                        ? '[' + (typeof COAX_EQUIP_TYPES !== 'undefined' && COAX_EQUIP_TYPES[nearJunction.type] ? COAX_EQUIP_TYPES[nearJunction.type].label : '동축') + ']'
                     : '';
                 showConfirm(
                     `${jTypeLabel} '${jName}'에 연결하시겠습니까?`,
@@ -489,6 +516,7 @@
                                 pendingWaypoints.pop();
                             }
                         }
+                        _clearCoaxRouteLabel();
                         clearPreviewOnly();
                         showConnectionModal();
                     },
@@ -498,34 +526,61 @@
                 return;
             }
 
-            // 함체 없으면 기존 전주 스냅 로직
-            const nearPole = findNearestPole(lat, lng);
-            if (nearPole) {
-                var _off = window._polePreviewOffset || { dLat: 0, dLng: 0 };
-                lat = nearPole.lat + _off.dLat; lng = nearPole.lng + _off.dLng;
+            // 동축 설계 모드: 전주 필수 경유점
+            if (isCoaxDesign) {
+                var _snapR = COAX_SNAP_RADIUS_M;
+                var nearPole = findNearestPoleR(lat, lng, _snapR);
+                if (!nearPole) {
+                    showStatus('⚠ 전주를 선택하세요 (전주 근처를 클릭해주세요)');
+                    return;
+                }
+                pendingWaypoints.push({ lat: lat, lng: lng, snappedPole: nearPole.id });
+                var marker = L.circleMarker([lat, lng], {
+                    radius: 4, fillColor: '#FF6D00', color: '#fff', weight: 2, fillOpacity: 0.8, zIndexOffset: 2000
+                }).addTo(map);
+                waypointMarkers.push(marker);
+                updatePreviewLine();
+                _showCoaxRouteLabel(nearPole.name || nearPole.id, lat, lng);
+                showStatus('경유: ' + (nearPole.name || '') + ' | 경유점 ' + pendingWaypoints.length + '개 (Space=일시정지)');
+                return;
             }
-            pendingWaypoints.push({ lat, lng, snappedPole: nearPole ? nearPole.id : null });
-            const marker = L.circleMarker([lat, lng], {
-                radius: nearPole ? 5 : 3,
-                fillColor: nearPole ? '#00cc44' : '#e67e22',
+
+            // 광 모드: 기존 로직 (전주 스냅 + 자유점)
+            var fiberPole = findNearestPole(lat, lng);
+            if (fiberPole) {
+                var _off = window._polePreviewOffset || { dLat: 0, dLng: 0 };
+                lat = fiberPole.lat + _off.dLat; lng = fiberPole.lng + _off.dLng;
+            }
+            pendingWaypoints.push({ lat, lng, snappedPole: fiberPole ? fiberPole.id : null });
+            var marker = L.circleMarker([lat, lng], {
+                radius: fiberPole ? 5 : 3,
+                fillColor: fiberPole ? '#00cc44' : '#e67e22',
                 color: '#fff', weight: 2, fillOpacity: 1, zIndexOffset: 2000
             }).addTo(map);
             waypointMarkers.push(marker);
             updatePreviewLine();
-            showStatus(nearPole
-                ? '전주 스냅: ' + nearPole.name + ' | 경유점 ' + pendingWaypoints.length + '개 (Space=일시정지)'
+            showStatus(fiberPole
+                ? '전주 스냅: ' + fiberPole.name + ' | 경유점 ' + pendingWaypoints.length + '개 (Space=일시정지)'
                 : '경유점 ' + pendingWaypoints.length + '개 (Space=일시정지, ESC=취소)');
         }
 
         function updatePreviewLine() {
             if (previewPolyline) map.removeLayer(previewPolyline);
+            // ONU outPort 오프셋 적용
+            let startLat = connectingFromNode.lat, startLng = connectingFromNode.lng;
+            if (connectingFromNode.type === 'onu' && window._coaxCurrentOutPort && typeof getOnuPortLatLng === 'function') {
+                var portPos = getOnuPortLatLng(connectingFromNode, window._coaxCurrentOutPort);
+                startLat = portPos.lat;
+                startLng = portPos.lng;
+            }
             const path = [
-                [connectingFromNode.lat, connectingFromNode.lng],
+                [startLat, startLng],
                 ...pendingWaypoints.map(wp => [wp.lat, wp.lng])
             ];
             if (path.length >= 2) {
+                var lineColor = _isCoaxDesignConnecting() ? '#FF6D00' : '#e67e22';
                 previewPolyline = L.polyline(path, {
-                    color: '#e67e22', weight: 2, opacity: 0.6, dashArray: '8,6'
+                    color: lineColor, weight: 2, opacity: 0.6, dashArray: '8,6'
                 }).addTo(map);
             }
         }
@@ -537,6 +592,7 @@
             if (previewPolyline) { map.removeLayer(previewPolyline); previewPolyline = null; }
             if (snapCircleOverlay) { snapCircleOverlay.setMap(null); snapCircleOverlay=null; }
             if (snapHighlight) { snapHighlight.setMap(null); snapHighlight=null; }
+            _clearCoaxRouteLabel();
             if(window._mousemoveHandler){kakao.maps.event.removeListener(map._m,'mousemove',window._mousemoveHandler);window._mousemoveHandler=null;}
             map.off('click', onMapClickForWaypoint);
         }
@@ -560,22 +616,43 @@
         
         // 연결 모달 표시
         function showConnectionModal() {
-            const coreOptions = [12, 24, 48, 72, 144, 288, 432];
+            // 동축 연결 감지
+            const _isCoaxConn = (typeof isCoaxType === 'function') &&
+                (isCoaxType(connectingFromNode.type) || isCoaxType(connectingToNode.type));
+
+            // 동축: 컨텍스트 메뉴 스타일로 규격만 선택
+            if (_isCoaxConn) {
+                _showCoaxCoreMenu();
+                return;
+            }
+
+            // 광케이블: 기존 모달
             const container = document.getElementById('fiberCoreSelection');
             container.innerHTML = '';
-            
-            coreOptions.forEach(cores => {
-                const btn = document.createElement('button');
+            const titleEl = document.getElementById('connectionModalTitle');
+            const labelEl = document.getElementById('coreSelectionLabel');
+            if (titleEl) titleEl.textContent = '케이블 연결';
+            if (labelEl) labelEl.textContent = '연결할 코어 수를 선택하세요:';
+            document.getElementById('lineTypeSelection').style.display = '';
+            document.querySelector('#connectionModal p[style*="케이블 종류"]');
+            // 케이블 종류 라벨 표시
+            var ltLabel = document.getElementById('lineTypeSelection').previousElementSibling;
+            if (ltLabel && ltLabel.tagName === 'P') ltLabel.style.display = '';
+            document.getElementById('lineTypeSelection').style.display = '';
+
+            var coreOptions = [12, 24, 48, 72, 144, 288, 432];
+            coreOptions.forEach(function(cores) {
+                var btn = document.createElement('button');
                 btn.className = 'fiber-core-btn';
                 btn.textContent = cores + '코어';
+                btn.dataset.cores = cores;
                 btn.onclick = function() {
-                    document.querySelectorAll('.fiber-core-btn').forEach(b => b.classList.remove('selected'));
+                    container.querySelectorAll('.fiber-core-btn').forEach(function(b) { b.classList.remove('selected'); });
                     btn.classList.add('selected');
-                    btn.dataset.cores = cores;
                 };
                 container.appendChild(btn);
             });
-            
+
             // lineType 초기화 (신설 기본)
             document.querySelectorAll('#lineTypeSelection .fiber-core-btn').forEach(b => b.classList.remove('selected'));
             var defBtn = document.querySelector('#lineTypeSelection [data-line-type="new"]');
@@ -583,12 +660,130 @@
 
             document.getElementById('connectionModal').classList.add('active');
         }
+
+        // 동축 케이블 규격 선택 — 컨텍스트 메뉴 스타일
+        function _showCoaxCoreMenu() {
+            var old = document.getElementById('coaxCoreMenu');
+            if (old) old.remove();
+
+            var menu = document.createElement('div');
+            menu.id = 'coaxCoreMenu';
+            menu.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:10010;';
+            // 배경 클릭 시 취소
+            menu.addEventListener('click', function(e) {
+                if (e.target === menu) { menu.remove(); closeConnectionModal(); }
+            });
+
+            var box = document.createElement('div');
+            box.style.cssText = 'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);' +
+                'background:#fff;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,0.25);' +
+                'padding:10px;display:flex;gap:6px;';
+
+            var options = [
+                { label: '12C', value: 12 },
+                { label: '7C', value: 7 },
+                { label: '5C', value: 5 }
+            ];
+
+            options.forEach(function(opt) {
+                var btn = document.createElement('button');
+                btn.textContent = opt.label;
+                btn.style.cssText = 'padding:10px 20px;border:2px solid #1a6fd4;border-radius:8px;' +
+                    'background:#fff;color:#1a6fd4;font-size:15px;font-weight:bold;cursor:pointer;' +
+                    'transition:all 0.15s;min-width:56px;';
+                btn.onmouseover = function() { btn.style.background = '#1a6fd4'; btn.style.color = '#fff'; };
+                btn.onmouseout = function() { btn.style.background = '#fff'; btn.style.color = '#1a6fd4'; };
+                btn.onclick = function() {
+                    menu.remove();
+                    _confirmCoaxConnection(opt.value);
+                };
+                box.appendChild(btn);
+            });
+
+            menu.appendChild(box);
+            document.body.appendChild(menu);
+        }
+
+        // 동축 케이블 연결 확정 (규격 선택 즉시)
+        function _confirmCoaxConnection(cores) {
+            if (!connectingFromNode || !connectingToNode) {
+                showStatus('연결할 장비를 다시 선택해주세요');
+                return;
+            }
+
+            // IN 중복 체크
+            var toNodeInConns = getNodeInConns(connectingToNode.id);
+            if (toNodeInConns.length >= 1) {
+                var toName = connectingToNode.name || '장비';
+                showConfirm(
+                    '\'' + toName + '\'에 이미 IN 케이블이 연결되어 있습니다.\n동축 장비는 IN 1개만 가능합니다.',
+                    function() {},
+                    '다른 장비에 연결하세요.',
+                    '확인'
+                );
+                connectingMode = false; window.connectingMode = false;
+                connectingFromNode = null; connectingToNode = null;
+                clearPreviewOnly(); pendingWaypoints = [];
+                return;
+            }
+
+            // inOrder / connDirections 설정
+            if (!connectingToNode.inOrder) connectingToNode.inOrder = [];
+            if (!connectingFromNode.connDirections) connectingFromNode.connDirections = {};
+            if (!connectingToNode.connDirections) connectingToNode.connDirections = {};
+
+            var connId = Date.now().toString();
+            connectingFromNode.connDirections[connId] = 'out';
+            connectingToNode.connDirections[connId] = 'in';
+
+            var fromIndex = nodes.findIndex(function(n) { return n.id === connectingFromNode.id; });
+            var toIndex = nodes.findIndex(function(n) { return n.id === connectingToNode.id; });
+            if (fromIndex !== -1) nodes[fromIndex] = connectingFromNode;
+            if (toIndex !== -1) nodes[toIndex] = connectingToNode;
+
+            var connection = {
+                id: connId,
+                nodeA: connectingFromNode.id,
+                nodeB: connectingToNode.id,
+                cores: cores,
+                lineType: 'new',
+                cableType: 'coax',
+                waypoints: [].concat(pendingWaypoints || []),
+                portMapping: [],
+                inFromCableId: null,
+                outPort: window._coaxCurrentOutPort || null
+            };
+
+            connectingToNode.inOrder.push(connId);
+            var toIdx2 = nodes.findIndex(function(n) { return n.id === connectingToNode.id; });
+            if (toIdx2 !== -1) nodes[toIdx2] = connectingToNode;
+
+            connections.push(connection);
+            saveData();
+            renderAllConnections();
+
+            // ONU 마커 리렌더
+            if (connectingFromNode.type === 'onu' && markers[connectingFromNode.id]) {
+                map.removeLayer(markers[connectingFromNode.id]);
+                delete markers[connectingFromNode.id];
+                renderNode(connectingFromNode);
+            }
+
+            clearPreviewOnly();
+            connectingMode = false; window.connectingMode = false;
+            connectingFromNode = null; connectingToNode = null;
+            selectedNode = null;
+            pendingWaypoints = [];
+            window._coaxCurrentOutPort = null;
+            hideStatus();
+            showStatus(cores + 'C 케이블이 연결되었습니다');
+        }
         
         // 연결 확인
         function confirmConnection() {
-            const selectedBtn = document.querySelector('.fiber-core-btn.selected');
+            const selectedBtn = document.querySelector('#fiberCoreSelection .fiber-core-btn.selected');
             if (!selectedBtn) {
-                showStatus('코어 수를 선택하세요');
+                showStatus('케이블 규격을 선택하세요');
                 return;
             }
             
@@ -602,6 +797,7 @@
             const cores = parseInt(selectedBtn.dataset.cores);
             const lineTypeBtn = document.querySelector('#lineTypeSelection .fiber-core-btn.selected');
             const lineType = lineTypeBtn ? lineTypeBtn.dataset.lineType : 'new';
+            const _isCoaxConn = selectedBtn.dataset.coax === 'true';
 
             // 같은 장비 간 기존 연결 확인 (IN2 처리)
             const duplicate = connections.find(c =>
@@ -615,7 +811,19 @@
                 const toName = connectingToNode.name || '장비';
                 const inNum = toNodeInConns.length + 1; // 추가될 IN 번호
 
-                // IN은 최대 2개까지만 허용
+                // 동축 장비: IN은 무조건 1개만 허용
+                if (_isCoaxConn && toNodeInConns.length >= 1) {
+                    closeConnectionModal();
+                    showConfirm(
+                        `'${toName}'에 이미 IN 케이블이 연결되어 있습니다.\n동축 장비는 IN 1개만 가능합니다.`,
+                        () => {},
+                        `다른 장비에 연결하세요.`,
+                        '확인'
+                    );
+                    return;
+                }
+
+                // 광케이블: IN은 최대 2개까지만 허용
                 if (toNodeInConns.length >= 2) {
                     closeConnectionModal();
                     showConfirm(
@@ -646,9 +854,11 @@
                             nodeA: fn.id,   // fn이 OUT(송신)측
                             nodeB: tn.id,   // tn이 IN(수신)측
                             cores: cs,
+                            cableType: _isCoaxConn ? 'coax' : 'fiber',
                             waypoints: wp,
                             portMapping: [],
-                            inFromCableId: null
+                            inFromCableId: null,
+                            outPort: _isCoaxConn ? (window._coaxCurrentOutPort || null) : null
                         };
                         // connDirections 설정
                         fn.connDirections[newConnId] = 'out';
@@ -687,22 +897,22 @@
             if (!connectingFromNode.connDirections) connectingFromNode.connDirections = {};
             if (!connectingToNode.connDirections) connectingToNode.connDirections = {};
             
-            // 양쪽 장비에 포트 생성 (아직 없으면)
-            if (!connectingFromNode.ports) connectingFromNode.ports = [];
-            if (!connectingToNode.ports) connectingToNode.ports = [];
-            
-            // 포트가 부족하면 추가
-            while (connectingFromNode.ports.length < cores) {
-                connectingFromNode.ports.push({
-                    number: connectingFromNode.ports.length + 1,
-                    label: ''
-                });
-            }
-            while (connectingToNode.ports.length < cores) {
-                connectingToNode.ports.push({
-                    number: connectingToNode.ports.length + 1,
-                    label: ''
-                });
+            // 광케이블: 양쪽 장비에 포트 생성 (동축은 포트 불필요)
+            if (!_isCoaxConn) {
+                if (!connectingFromNode.ports) connectingFromNode.ports = [];
+                if (!connectingToNode.ports) connectingToNode.ports = [];
+                while (connectingFromNode.ports.length < cores) {
+                    connectingFromNode.ports.push({
+                        number: connectingFromNode.ports.length + 1,
+                        label: ''
+                    });
+                }
+                while (connectingToNode.ports.length < cores) {
+                    connectingToNode.ports.push({
+                        number: connectingToNode.ports.length + 1,
+                        label: ''
+                    });
+                }
             }
             
             const connId = Date.now().toString();
@@ -723,9 +933,11 @@
                 nodeB: connectingToNode.id,    // IN(수신)측
                 cores: cores,
                 lineType: lineType,
+                cableType: _isCoaxConn ? 'coax' : 'fiber',
                 waypoints: [...(pendingWaypoints || [])],
                 portMapping: [],
-                inFromCableId: null
+                inFromCableId: null,
+                outPort: _isCoaxConn ? (window._coaxCurrentOutPort || null) : null
             };
             pendingWaypoints = [];
             
@@ -738,6 +950,13 @@
             saveData();
             renderAllConnections();
 
+            // ONU 마커 리렌더 (포트 사용상태 업데이트)
+            if (_isCoaxConn && connectingFromNode && connectingFromNode.type === 'onu' && markers[connectingFromNode.id]) {
+                map.removeLayer(markers[connectingFromNode.id]);
+                delete markers[connectingFromNode.id];
+                renderNode(connectingFromNode);
+            }
+
             // 프리뷰 라인/마커 정리
             clearPreviewOnly();
 
@@ -748,6 +967,7 @@
             connectingToNode = null;
             selectedNode = null;
             hideStatus();
+            if (_isCoaxConn) window._coaxCurrentOutPort = null;
             showStatus('IN1 케이블이 연결되었습니다');
         }
         
@@ -761,6 +981,22 @@
             hideStatus();
         }
         
+        // ── 광케이블 숨김 토글 ──
+        var _fiberCablesHidden = false;
+        function toggleFiberCables() {
+            _fiberCablesHidden = !_fiberCablesHidden;
+            var btn = document.getElementById('hideFiberBtn');
+            if (btn) {
+                btn.classList.toggle('active', _fiberCablesHidden);
+                var lbl = btn.querySelector('.tb-label');
+                if (lbl) lbl.textContent = _fiberCablesHidden ? '광표시' : '광숨김';
+            }
+            renderAllConnections();
+        }
+        window.toggleFiberCables = toggleFiberCables;
+
+        // _coaxHidden, toggleCoaxVisible() → cable_map_coax.js로 이동
+
         // 연결 렌더링
         // 두 점 사이 수직 오프셋 (lat/lng 단위)
         function perpOffset(lat1, lng1, lat2, lng2, distM) {
@@ -798,9 +1034,16 @@
         }
 
         function renderConnection(connection) {
+            // 광케이블 숨김 모드: fiber 케이블 렌더링 스킵
+            if (_fiberCablesHidden && connection.cableType !== 'coax') return;
+            // 동축 숨김 모드: coax 케이블 렌더링 스킵
+            if (_coaxHidden && connection.cableType === 'coax') return;
+            // 도면보기 모드: 기설이 아닌 동축 케이블 스킵
+            if (typeof coaxIsViewFiltered === 'function' && coaxIsViewFiltered(connection)) return;
+
             const fromNode = nodes.find(n => n.id === connFrom(connection));
             const toNode = nodes.find(n => n.id === connTo(connection));
-            
+
             if (!fromNode || !toNode) return;
             
             if (!connection.waypoints) connection.waypoints = [];
@@ -816,9 +1059,15 @@
             const PARALLEL_OFFSET_M = 4; // 병렬선 간격 4m
             const parallelOffset = total > 1 ? (myIndex - (total-1)/2) * PARALLEL_OFFSET_M : 0;
 
-            // 경로 생성
+            // 경로 생성 — ONU outPort 오프셋 적용
+            let startLat = fromNode.lat, startLng = fromNode.lng;
+            if (fromNode.type === 'onu' && connection.outPort && typeof getOnuPortLatLng === 'function') {
+                var portPos = getOnuPortLatLng(fromNode, connection.outPort);
+                startLat = portPos.lat;
+                startLng = portPos.lng;
+            }
             let path = [
-                [fromNode.lat, fromNode.lng],
+                [startLat, startLng],
                 ...connection.waypoints.map(wp => [wp.lat, wp.lng]),
                 [toNode.lat, toNode.lng]
             ];
@@ -831,11 +1080,22 @@
                 path = applyPathOffset(path, parallelOffset);
             }
             
-            // 선 그리기 — 신설/기설 구분
+            // 선 그리기 — 신설/기설, 광/동축 구분
             const isNewCable = (connection.lineType || 'existing') === 'new';
-            const cableColor = connection.color || (isNewCable ? '#ff0000' : '#0055ff');
-            const polylineOpts = { color: cableColor, weight: 4, opacity: 0.8 };
-            if (isNewCable) polylineOpts.dashArray = '10,6';
+            const isCoaxLine = connection.cableType === 'coax';
+            let cableColor;
+            if (connection.color) {
+                cableColor = connection.color;
+            } else if (isCoaxLine) {
+                // 동축: 도착(IN)이 amp류면 빨강, 아니면 파랑
+                var _toAmp = toNode && typeof COAX_EQUIP_TYPES !== 'undefined' &&
+                    COAX_EQUIP_TYPES[toNode.type] && COAX_EQUIP_TYPES[toNode.type].category === 'amp';
+                cableColor = _toAmp ? '#e53935' : '#1a6fd4';
+            } else {
+                cableColor = isNewCable ? '#ff0000' : '#0055ff';
+            }
+            const polylineOpts = { color: cableColor, weight: isCoaxLine ? 2 : 3, opacity: 0.8 };
+            if (isNewCable && !isCoaxLine) polylineOpts.dashArray = '10,6';
             const polyline = L.polyline(path, polylineOpts).addTo(map);
             
             // 경유점 삽입 공통 함수 (PC 더블클릭 / 모바일 길게터치 공용)
@@ -933,8 +1193,10 @@
             if (labelAngle > 90) labelAngle -= 180;
             if (labelAngle < -90) labelAngle += 180;
 
-            const typeLabel = isNewCable ? '신설' : '기설';
-            const labelHTML = `<div class="connection-label" style="color:${cableColor};transform:rotate(${labelAngle.toFixed(1)}deg) translateY(-8px);transform-origin:center center;white-space:nowrap;">${typeLabel} ${connection.cores}코어</div>`;
+            const isCoaxCable = connection.cableType === 'coax';
+            const typeLabel = isCoaxCable ? '' : (isNewCable ? '신설 ' : '기설 ');
+            const coreLabel = isCoaxCable ? connection.cores + 'C' : connection.cores + '코어';
+            const labelHTML = `<div class="connection-label" style="color:${cableColor};transform:rotate(${labelAngle.toFixed(1)}deg) translateY(-8px);transform-origin:center center;white-space:nowrap;">${typeLabel}${coreLabel}</div>`;
 
             const labelIcon = L.divIcon({
                 html: labelHTML,
@@ -1020,9 +1282,9 @@
         // 케이블 삭제
         function deleteConnection(connectionId) {
             const conn = connections.find(c => c.id === connectionId);
+            var toNodeId = conn ? connTo(conn) : null;
+            var fromNodeId = conn ? connFrom(conn) : null;
             if (conn) {
-                const toNodeId = connTo(conn);
-                const fromNodeId = connFrom(conn);
 
                 // toNode 포트 초기화 + 하위 노드 연쇄 초기화
                 const toNode = nodes.find(n => n.id === toNodeId);
@@ -1054,6 +1316,35 @@
                     });
                 }
             }
+            // 동축 케이블 삭제 시: 도착 장비가 동축 장비이고 다른 연결이 없으면 함께 삭제
+            if (conn && conn.cableType === 'coax' && toNodeId) {
+                var toNd = nodes.find(function(n) { return n.id === toNodeId; });
+                if (toNd && typeof isCoaxType === 'function' && isCoaxType(toNd.type)) {
+                    // 이 장비에 연결된 다른 케이블이 있는지 확인
+                    var otherConns = connections.filter(function(c) {
+                        return c.id !== connectionId && (c.nodeA === toNodeId || c.nodeB === toNodeId);
+                    });
+                    if (otherConns.length === 0) {
+                        // 마커 제거
+                        if (markers[toNodeId]) {
+                            map.removeLayer(markers[toNodeId]);
+                            delete markers[toNodeId];
+                        }
+                        nodes = nodes.filter(function(n) { return n.id !== toNodeId; });
+                    }
+                }
+            }
+
+            // ONU 마커 리렌더 (포트 사용상태 업데이트)
+            if (conn && conn.outPort && fromNodeId) {
+                var onuNd = nodes.find(function(n) { return n.id === fromNodeId; });
+                if (onuNd && onuNd.type === 'onu' && markers[fromNodeId]) {
+                    map.removeLayer(markers[fromNodeId]);
+                    delete markers[fromNodeId];
+                    renderNode(onuNd);
+                }
+            }
+
             connections = connections.filter(c => c.id !== connectionId);
             saveData();
             renderAllConnections();
@@ -1255,36 +1546,93 @@
             closeMenuModal();
             movingNodeMode = true;
             movingNode = selectedNode;
-            
-            showStatus('지도를 클릭하여 장비를 이동하세요');
-            
+            var _isCoaxMoving = typeof isCoaxType === 'function' && isCoaxType(movingNode.type);
+            var _moveSnapCircle = null;
+            var _moveSnapHighlight = null;
+            var _moveSnapR = _isCoaxMoving ? COAX_SNAP_RADIUS_M : 15;
+
+            showStatus(_isCoaxMoving
+                ? '전주 근처를 클릭하여 장비를 이동하세요 (ESC=취소)'
+                : '지도를 클릭하여 장비를 이동하세요');
+
+            // 동축 장비: 마우스 이동 시 스냅 원 표시
+            function _onMoveMousemove(me) {
+                var lat = me.latLng.getLat(), lng = me.latLng.getLng();
+                if (_moveSnapCircle) { _moveSnapCircle.setMap(null); _moveSnapCircle = null; }
+                if (_moveSnapHighlight) { _moveSnapHighlight.setMap(null); _moveSnapHighlight = null; }
+                if (!_isCoaxMoving) return;
+                var nearPole = findNearestPoleR(lat, lng, _moveSnapR);
+                _moveSnapCircle = new kakao.maps.Circle({
+                    map: map._m, center: new kakao.maps.LatLng(lat, lng), radius: _moveSnapR,
+                    strokeWeight: 1, strokeColor: nearPole ? '#00cc44' : '#aaaaaa', strokeOpacity: 0.8,
+                    fillColor: nearPole ? '#00cc44' : '#cccccc', fillOpacity: 0.15
+                });
+                if (nearPole) {
+                    var _off = window._polePreviewOffset || { dLat: 0, dLng: 0 };
+                    _moveSnapHighlight = new kakao.maps.Circle({
+                        map: map._m,
+                        center: new kakao.maps.LatLng(nearPole.lat + _off.dLat, nearPole.lng + _off.dLng),
+                        radius: 3,
+                        strokeWeight: 2, strokeColor: '#00cc44', strokeOpacity: 1,
+                        fillColor: '#00cc44', fillOpacity: 0.5
+                    });
+                }
+            }
+
+            function _cleanupMoveSnap() {
+                if (_moveSnapCircle) { _moveSnapCircle.setMap(null); _moveSnapCircle = null; }
+                if (_moveSnapHighlight) { _moveSnapHighlight.setMap(null); _moveSnapHighlight = null; }
+                kakao.maps.event.removeListener(map._m, 'mousemove', _onMoveMousemove);
+            }
+
+            if (_isCoaxMoving) {
+                kakao.maps.event.addListener(map._m, 'mousemove', _onMoveMousemove);
+            }
+
             // 지도 클릭 이벤트 추가
             map.once('click', function(e) {
+                _cleanupMoveSnap();
+
                 if (movingNode) {
-                    // 장비 위치 업데이트
-                    movingNode.lat = e.latlng.lat;
-                    movingNode.lng = e.latlng.lng;
-                    
+                    var clickLat = e.latlng.lat, clickLng = e.latlng.lng;
+
+                    // 동축 장비: 전주 근처만 이동 허용
+                    if (_isCoaxMoving) {
+                        var newPole = findNearestPoleR(clickLat, clickLng, _moveSnapR);
+                        if (!newPole) {
+                            showStatus('⚠ 전주 근처를 클릭해주세요');
+                            movingNodeMode = false;
+                            movingNode = null;
+                            return;
+                        }
+                        movingNode.lat = clickLat;
+                        movingNode.lng = clickLng;
+                        movingNode.snappedPoleId = newPole.id;
+                    } else {
+                        movingNode.lat = clickLat;
+                        movingNode.lng = clickLng;
+                    }
+
                     // 노드 배열에서도 업데이트
                     const index = nodes.findIndex(n => n.id === movingNode.id);
                     if (index !== -1) {
                         nodes[index] = movingNode;
                     }
-                    
+
                     // 마커 다시 그리기
                     if (markers[movingNode.id]) {
                         map.removeLayer(markers[movingNode.id]);
                         delete markers[movingNode.id];
                     }
                     renderNode(movingNode);
-                    
+
                     // 연결선도 다시 그리기
                     renderAllConnections();
-                    
+
                     saveData();
                     showStatus('장비가 이동되었습니다');
                 }
-                
+
                 movingNodeMode = false;
                 movingNode = null;
             });
@@ -1572,16 +1920,16 @@
                   '</div>' +
                   '<div style="margin-top:5px;display:flex;align-items:center;gap:5px;">' +
                     '<span style="width:7px;height:7px;border-radius:50%;background:' + typeDot + ';display:inline-block;"></span>' +
-                    '<span style="font-size:11.5px;color:#64748b;font-weight:500;">' + typeLabel + ' · ' + connection.cores + '코어</span>' +
+                    '<span style="font-size:11.5px;color:#64748b;font-weight:500;">' + (connection.cableType === 'coax' ? '' : typeLabel + ' · ') + connection.cores + (connection.cableType === 'coax' ? 'C' : '코어') + '</span>' +
                   '</div>' +
                 '</div>' +
                 // 버튼 영역
                 '<div style="padding:10px 12px;display:flex;flex-direction:column;gap:5px;">' +
-                  '<button onclick="' + _ci('changeCoreCount') + '" style="' + btnPrimary + '" onmouseover="this.style.filter=\'brightness(1.1)\'" onmouseout="this.style.filter=\'none\'">' + icoCore + '코어 수 변경</button>' +
-                  '<button onclick="' + _ci('exportPoleData') + '" style="' + btnLight + '" onmouseover="this.style.background=\'#e2e8f0\'" onmouseout="this.style.background=\'#f0f4fa\'">' + icoPole + '전주 데이터 추출</button>' +
-                  '<button onclick="' + _ci('generateApplication') + '" style="' + btnLight + '" onmouseover="this.style.background=\'#e2e8f0\'" onmouseout="this.style.background=\'#f0f4fa\'">' + icoDoc + '공가 신청서 생성</button>' +
-                  '<button onclick="' + _ci('openCablePoleLabelBatch') + '" style="' + btnLight + '" onmouseover="this.style.background=\'#e2e8f0\'" onmouseout="this.style.background=\'#f0f4fa\'">' + icoLabel + '전주 라벨 일괄조정</button>' +
-                  '<button onclick="' + _ci('toggleCableType') + '" style="' + btnLight + '" onmouseover="this.style.background=\'#e2e8f0\'" onmouseout="this.style.background=\'#f0f4fa\'">' + icoSwitch + '신설/기설 전환</button>' +
+                  '<button onclick="' + _ci('changeCoreCount') + '" style="' + btnPrimary + '" onmouseover="this.style.filter=\'brightness(1.1)\'" onmouseout="this.style.filter=\'none\'">' + icoCore + (connection.cableType === 'coax' ? '규격 변경' : '코어 수 변경') + '</button>' +
+                  (connection.cableType !== 'coax' ? '<button onclick="' + _ci('exportPoleData') + '" style="' + btnLight + '" onmouseover="this.style.background=\'#e2e8f0\'" onmouseout="this.style.background=\'#f0f4fa\'">' + icoPole + '전주 데이터 추출</button>' : '') +
+                  (connection.cableType !== 'coax' ? '<button onclick="' + _ci('generateApplication') + '" style="' + btnLight + '" onmouseover="this.style.background=\'#e2e8f0\'" onmouseout="this.style.background=\'#f0f4fa\'">' + icoDoc + '공가 신청서 생성</button>' : '') +
+                  (connection.cableType !== 'coax' ? '<button onclick="' + _ci('openCablePoleLabelBatch') + '" style="' + btnLight + '" onmouseover="this.style.background=\'#e2e8f0\'" onmouseout="this.style.background=\'#f0f4fa\'">' + icoLabel + '전주 라벨 일괄조정</button>' : '') +
+                  (connection.cableType !== 'coax' ? '<button onclick="' + _ci('toggleCableType') + '" style="' + btnLight + '" onmouseover="this.style.background=\'#e2e8f0\'" onmouseout="this.style.background=\'#f0f4fa\'">' + icoSwitch + '신설/기설 전환</button>' : '') +
                 '</div>' +
                 // 삭제 영역
                 '<div style="padding:4px 12px 10px;border-top:1px solid #f0f0f0;">' +
@@ -1878,13 +2226,16 @@
                 color: '#e67e22', weight: 2, opacity: 0.4, dashArray: '8,6'
             }).addTo(map);
 
-            // 끝점 주황 원 마커 (divIcon으로 DOM 클릭 우선)
+            // 끝점 원 마커 (divIcon으로 DOM 클릭 우선)
             var lastWp = pendingWaypoints[pendingWaypoints.length - 1];
+            var _dotSize = 20;
+            var _dotColor = _isCoaxDesignConnecting() ? '#FF6D00' : '#e67e22';
+            var _dotBorder = 2;
             var dotIcon = L.divIcon({
-                html: '<div class="paused-cable-dot" style="width:60px; height:60px; background:#e67e22; border:4px solid white; border-radius:50%; opacity:0.85; cursor:pointer; box-shadow:0 3px 12px rgba(0,0,0,0.4);"></div>',
+                html: '<div class="paused-cable-dot" style="width:'+_dotSize+'px; height:'+_dotSize+'px; background:'+_dotColor+'; border:'+_dotBorder+'px solid white; border-radius:50%; opacity:0.85; cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,0.3);"></div>',
                 className: '',
-                iconSize: [60, 60],
-                iconAnchor: [30, 30]
+                iconSize: [_dotSize, _dotSize],
+                iconAnchor: [_dotSize/2, _dotSize/2]
             });
             var endMarker = L.marker([lastWp.lat, lastWp.lng], {
                 icon: dotIcon, zIndexOffset: 9000
@@ -2314,6 +2665,116 @@
         window.saveAllWithRecalc        = saveAllWithRecalc;
         window.showWaypointMarkers      = showWaypointMarkers;
         window.renderAllConnections     = renderAllConnections;
+        // 동축 설계: 장비 생성 + 케이블 자동 IN 연결
+        // equipType: 장비 타입, lat/lng: 우클릭 위치, tapValue: 탭 수치 (옵션)
+        function coaxAutoConnectEquip(equipType, lat, lng, tapValue) {
+            if (!connectingMode || !connectingFromNode) return null;
+            if (!_coaxActiveOnu) return null;
+
+            var def = COAX_EQUIP_TYPES[equipType];
+            if (!def) return null;
+
+            // 장비 배치 위치 = 마지막 경유점 좌표 (케이블 끝점)
+            var placeLat = lat, placeLng = lng;
+            var nearPoleId = null;
+
+            if (pendingWaypoints && pendingWaypoints.length > 0) {
+                var lastWp = pendingWaypoints[pendingWaypoints.length - 1];
+                placeLat = lastWp.lat;
+                placeLng = lastWp.lng;
+                nearPoleId = lastWp.snappedPole || null;
+            }
+            // 경유점 없으면 출발 장비 위치에 배치
+            if (!nearPoleId) {
+                var nearPole = findNearestPoleR(placeLat, placeLng, COAX_SNAP_RADIUS_M * 2);
+                if (nearPole) nearPoleId = nearPole.id;
+            }
+
+            // 장비 노드 생성 (전주 중심에 배치)
+            var equipNode = {
+                id: 'coax_' + Date.now().toString(),
+                type: equipType,
+                lat: placeLat,
+                lng: placeLng,
+                name: tapValue || def.label,
+                memo: '',
+                snappedPoleId: nearPoleId,
+                parentOnu: _coaxActiveOnu.id,
+                coaxStatus: 'new',
+                ofds: [], ports: [], rns: [], inOrder: [], connDirections: {}
+            };
+
+            nodes.push(equipNode);
+
+            // 케이블 자동 연결 (connectingFromNode → equipNode, IN 방향)
+            connectingToNode = equipNode;
+
+            // 케이블 규격 결정: 동축 기본 12C
+            var cores = 12;
+            var lineType = 'new';
+
+            var connId = Date.now().toString();
+
+            // connDirections 설정
+            if (!connectingFromNode.connDirections) connectingFromNode.connDirections = {};
+            equipNode.connDirections[connId] = 'in';
+            connectingFromNode.connDirections[connId] = 'out';
+            equipNode.inOrder.push(connId);
+
+            // 노드 배열 업데이트
+            var fromIndex = nodes.findIndex(function(n) { return n.id === connectingFromNode.id; });
+            if (fromIndex !== -1) nodes[fromIndex] = connectingFromNode;
+
+            var connection = {
+                id: connId,
+                nodeA: connectingFromNode.id,
+                nodeB: equipNode.id,
+                cores: cores,
+                lineType: lineType,
+                cableType: 'coax',
+                waypoints: pendingWaypoints && pendingWaypoints.length > 1
+                    ? [].concat(pendingWaypoints.slice(0, -1))
+                    : [],
+                portMapping: [],
+                inFromCableId: null,
+                outPort: window._coaxCurrentOutPort || null
+            };
+
+            connections.push(connection);
+            saveData();
+
+            // 프리뷰 정리
+            clearPreviewOnly();
+            pendingWaypoints = [];
+
+            // 렌더링
+            rerenderCoaxNodes();
+            renderAllConnections();
+
+            // ONU 마커 리렌더 (포트 사용상태 업데이트)
+            if (_coaxActiveOnu && markers[_coaxActiveOnu.id]) {
+                map.removeLayer(markers[_coaxActiveOnu.id]);
+                delete markers[_coaxActiveOnu.id];
+                renderNode(_coaxActiveOnu);
+            }
+
+            // 연결 모드 종료: 장비 클릭으로 다시 시작해야 함
+            connectingFromNode = null;
+            connectingToNode = null;
+            pendingWaypoints = [];
+            waypointMarkers = [];
+            connectingMode = false; window.connectingMode = false;
+
+            // 커서 복원
+            if (window._setMapCursorMode) window._setMapCursorMode('default');
+            else { var mapEl = document.getElementById('map'); if (mapEl) mapEl.style.cursor = ''; }
+
+            window._coaxCurrentOutPort = null;
+            showStatus(def.label + ' 배치 및 12C 케이블 연결 완료 — 장비를 클릭하여 계속 그리세요');
+            return equipNode;
+        }
+        window.coaxAutoConnectEquip = coaxAutoConnectEquip;
+
         window.showStatus               = showStatus;
         window.openCablePoleLabelBatch  = openCablePoleLabelBatch;
         window.closeCableInfoPanel      = closeCableInfoPanel;
