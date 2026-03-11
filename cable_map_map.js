@@ -1109,6 +1109,15 @@
                         </div>
                     </div>
 
+                    <!-- 엑셀 붙여넣기 -->
+                    <div style="margin-bottom:12px;">
+                        <label style="font-size:12px;color:#888;display:block;margin-bottom:3px;">📋 엑셀 데이터 붙여넣기</label>
+                        <textarea id="polePasteArea" rows="1" placeholder="엑셀에서 전산화번호/선로명/선로번호 복사 → 여기에 붙여넣기"
+                            style="width:100%;padding:7px 10px;border:1px dashed #aaa;border-radius:6px;font-size:12px;box-sizing:border-box;resize:none;color:#666;transition:all 0.2s;background:#fafafa;"
+                            onfocus="this.rows=3;this.style.borderColor='#1a6fd4';this.style.background='#fff';"
+                            onblur="if(!this.value){this.rows=1;this.style.borderColor='#aaa';this.style.background='#fafafa';}"></textarea>
+                    </div>
+
                     <!-- 전산화번호 -->
                     <div style="margin-bottom:10px;">
                         <label style="font-size:12px;color:#888;display:block;margin-bottom:3px;">전산화번호</label>
@@ -1177,6 +1186,36 @@
             window._currentPoleType = curType;
 
             document.getElementById('menuModal').classList.add('active');
+
+            // 붙여넣기 파싱 이벤트
+            var pasteArea = document.getElementById('polePasteArea');
+            if (pasteArea) {
+                pasteArea.addEventListener('paste', function(e) {
+                    e.preventDefault();
+                    var text = (e.clipboardData || window.clipboardData).getData('text') || '';
+                    _parsePoleClipboard(text);
+                    this.value = '';
+                    this.rows = 1;
+                    this.style.borderColor = '#aaa';
+                    this.style.background = '#fafafa';
+                });
+            }
+            // 전산화번호 자동 포맷 (대문자, 공백제거)
+            var numInput = document.getElementById('poleNumInput');
+            if (numInput) {
+                numInput.addEventListener('blur', function() {
+                    this.value = this.value.trim().replace(/\s+/g, '').toUpperCase();
+                });
+            }
+            // 전주번호 자동 포맷 (한글+숫자 → 대시 삽입)
+            var nameInput = document.getElementById('poleNameInput');
+            if (nameInput) {
+                nameInput.addEventListener('blur', function() {
+                    var v = this.value.trim();
+                    var m = v.match(/^([가-힣]+)\s*(\d+[A-Za-z0-9]*)$/);
+                    if (m) this.value = m[1] + '-' + m[2];
+                });
+            }
         }
 
         // 전주 종류 선택 (모달 닫지 않고 버튼 스타일만 변경)
@@ -1192,6 +1231,68 @@
                 btn.style.background = active ? c+'22' : '#fff';
                 btn.style.fontWeight = active ? 'bold' : 'normal';
             });
+        }
+
+        // 클립보드 데이터 파싱 → 전산화번호/전주번호 자동 채움
+        function _parsePoleClipboard(text) {
+            if (!text) return;
+            var lines = text.trim().split(/\r?\n/);
+            var 전산화 = '', 선로명 = '', 선로번호 = '';
+
+            // 키-값 패턴 시도 (줄별 탭 구분)
+            var kvMap = {};
+            lines.forEach(function(line) {
+                var parts = line.split('\t');
+                if (parts.length >= 2) {
+                    var key = parts[0].trim();
+                    var val = parts[1].trim();
+                    kvMap[key] = val;
+                }
+            });
+
+            if (kvMap['전산화번호']) 전산화 = kvMap['전산화번호'];
+            if (kvMap['선로명']) 선로명 = kvMap['선로명'];
+            if (kvMap['선로번호']) 선로번호 = kvMap['선로번호'];
+
+            // 키-값으로 못 찾으면 단일 행 탭 구분 시도
+            if (!전산화 && !선로명) {
+                var firstLine = lines[0] || '';
+                var cols = firstLine.split('\t').map(function(s) { return s.trim(); });
+
+                if (cols.length >= 4 && /^\d+$/.test(cols[1]) && /[가-힣]/.test(cols[2])) {
+                    // 4열: 관리구 | 번호 | 선로명 | 선로번호  (예: 88143 \t 581 \t 신월간 \t 44)
+                    전산화 = cols[0] + cols[1].padStart(3, '0');
+                    선로명 = cols[2]; 선로번호 = cols[3];
+                } else if (cols.length >= 3) {
+                    // 3열: 전산화번호 | 선로명 | 선로번호  (예: 8614E381 \t 신월간 \t 213)
+                    전산화 = cols[0]; 선로명 = cols[1]; 선로번호 = cols[2];
+                }
+            }
+
+            if (!전산화 && !선로명) return;
+
+            // 포맷팅
+            전산화 = 전산화.replace(/\s+/g, '').toUpperCase();
+            var poleName = '';
+            if (선로명 && 선로번호) {
+                poleName = 선로명 + '-' + 선로번호;
+            } else if (선로명) {
+                poleName = 선로명;
+            }
+
+            // 필드 채우기
+            if (전산화) document.getElementById('poleNumInput').value = 전산화;
+            if (poleName) document.getElementById('poleNameInput').value = poleName;
+
+            // 성공 피드백 (깜빡임)
+            var numEl = document.getElementById('poleNumInput');
+            var nameEl = document.getElementById('poleNameInput');
+            [numEl, nameEl].forEach(function(el) {
+                if (!el) return;
+                el.style.background = '#e8f5e9';
+                setTimeout(function() { el.style.background = ''; }, 800);
+            });
+            showStatus('붙여넣기 완료: ' + (전산화 || '') + ' / ' + (poleName || ''));
         }
 
         function savePoleInfo(nodeId) {

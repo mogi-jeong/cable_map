@@ -1507,7 +1507,7 @@
                         var dlng2 = (eq.lng - (pole.lng + off.dLng)) * 111000 * Math.cos(pole.lat * Math.PI / 180);
                         d2 = Math.min(d2, dlat2 * dlat2 + dlng2 * dlng2);
                     }
-                    if (d2 < 900) nearby.push(eq); // 30m 반경
+                    if (d2 < 100) nearby.push(eq); // 10m 반경
                 });
                 if (nearby.length > 0) equipByPoleId[pole.id] = nearby;
             });

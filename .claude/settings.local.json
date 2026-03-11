@@ -6,7 +6,20 @@
       "Bash(grep:*)",
       "Bash(do echo:*)",
       "Bash(python3:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(grep -rn \"saveData\\(\\)\" /c/cable_map/*.js | head -60)",
+      "Bash(git add:*)",
+      "Bash(git push:*)",
+      "Bash(git commit:*)",
+      "Bash(cd /c/cable_map/샘플 && ls -1 *.xlsx | wc -l)",
+      "Bash(pip install:*)",
+      "Bash(curl -sL \"https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js\" -o jspdf.umd.min.js)",
+      "Bash(curl -sL \"https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js\" -o html2canvas.min.js)",
+      "Bash(wc -l /c/cable_map/*.js)",
+      "Bash(echo \"=== Checking if showStatus is properly exported/accessible ===\" grep -n \"window.showStatus\" /c/cable_map/cable_map_*.js __NEW_LINE_f625d57817d1dd9a__ echo \"\" echo \"=== Checking if saveData is properly exported/accessible ===\" grep -n \"window.saveData\" /c/cable_map/cable_map_*.js __NEW_LINE_f625d57817d1dd9a__ echo \"\" echo \"=== Verifying outLineColors is accessible from showNodeInfoModalForEdit ===\" grep -n \"outLineColors\" /c/cable_map/cable_map_ofd.js)",
+      "Bash(echo \"=== Checking saveData definition and usage ===\" grep -n \"saveData\\\\\\(\" /c/cable_map/cable_map_*.js)",
+      "Read(//c/cable_map/**)",
+      "Bash(echo \"=== All saveData calls in codebase ===\" grep -n \"saveData\" /c/cable_map/cable_map_*.js)"
     ]
   }
 }

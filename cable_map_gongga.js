@@ -238,7 +238,7 @@ function gonggaBuildApplication(poles, invs, fromNode, toNode) {
         for (var ei = 0; ei < equips.length && ei < 3; ei++) {
             row[C['기기' + (ei + 1) + '코드']] = equips[ei].기기코드;
             row[C['기기' + (ei + 1) + '사업자']] = defaults.사업자;
-            row[C['기기' + (ei + 1) + '관리번호']] = equips[ei].관리번호;
+            row[C['기기' + (ei + 1) + '관리번호']] = '';
         }
         row[C.비고] = note || '';
         return row;
@@ -362,42 +362,40 @@ function gonggaBuildApplication(poles, invs, fromNode, toNode) {
                   String(today.getMonth() + 1).padStart(2, '0') +
                   String(today.getDate()).padStart(2, '0');
 
-    // 신규 파일
+    // 신규 파일 (신규 시트만)
     if (신규.length > 0) {
         var nWb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(nWb, ws1, '시설계획서_신규');
-        XLSX.utils.book_append_sheet(nWb, buildSheet([], '공가 가공설비 시설계획서 (정비)'), '시설계획서_정비');
-        XLSX.utils.book_append_sheet(nWb, buildSheet([], '공가 가공설비 시설계획서 (해지)'), '시설계획서_해지');
         var nInfo = countBonJo(신규);
         var nRange = makeRangeName(신규);
         var fn1 = dateStr + '_LGHV_공가신규_' + nRange + '_' + nInfo.bon + '본' + nInfo.jo + '조.xlsx';
         XLSX.writeFile(nWb, fn1);
     }
 
-    // 정비 파일
+    // 정비 파일 (정비 시트만)
     if (정비_신설.length > 0) {
         var jWb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(jWb, buildSheet([], '공가 가공설비 시설계획서 (신규)'), '시설계획서_신규');
         XLSX.utils.book_append_sheet(jWb, ws2, '시설계획서_정비');
-        XLSX.utils.book_append_sheet(jWb, buildSheet([], '공가 가공설비 시설계획서 (해지)'), '시설계획서_해지');
         var jInfo = countBonJo(정비_신설);
         var jRange = makeRangeName(정비_신설);
         var fn2 = dateStr + '_LGHV_공가정비_' + jRange + '_' + jInfo.bon + '본' + jInfo.jo + '조.xlsx';
         XLSX.writeFile(jWb, fn2);
     }
 
-    // 둘 다 없으면 빈 파일
-    if (신규.length === 0 && 정비_신설.length === 0) {
-        var wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws1, '시설계획서_신규');
-        XLSX.utils.book_append_sheet(wb, ws2, '시설계획서_정비');
-        XLSX.utils.book_append_sheet(wb, ws3, '시설계획서_해지');
-        var fileName = dateStr + '_LGHV_공가신청서_' + ((fromNode?.name || 'A') + '-' + (toNode?.name || 'B')).slice(0, 20) + '.xlsx';
-        XLSX.writeFile(wb, fileName);
+    // 해지 파일 (해지 시트만)
+    if (정비_해제.length > 0) {
+        var hWb = XLSX.utils.book_new();
+        var ws_h = buildSheet(정비_해제, '공가 가공설비 시설계획서 (해지)');
+        XLSX.utils.book_append_sheet(hWb, ws_h, '시설계획서_해지');
+        var hInfo = countBonJo(정비_해제);
+        var hRange = makeRangeName(정비_해제);
+        var fn3 = dateStr + '_LGHV_공가해지_' + hRange + '_' + hInfo.bon + '본' + hInfo.jo + '조.xlsx';
+        XLSX.writeFile(hWb, fn3);
     }
 
     var msgs = [];
     if (신규.length > 0) msgs.push('신규 ' + 신규.length + '행');
-    if (정비_신설.length > 0) msgs.push('정비 해제 ' + 정비_해제.length + '행 + 신설 ' + 정비_신설.length + '행');
+    if (정비_신설.length > 0) msgs.push('정비 ' + 정비_신설.length + '행');
+    if (정비_해제.length > 0) msgs.push('해지 ' + 정비_해제.length + '행');
     showStatus('공가 신청서 생성 완료 — ' + (msgs.length ? msgs.join(', ') : '데이터 없음'));
 }
