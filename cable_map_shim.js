@@ -102,6 +102,35 @@
         on:function(){return this;}
     };
 
+    function Pgn(ll,s){this._ll=ll;this._s=s||{};this._pgn=null;this._ls={};}
+    Pgn.prototype={
+        addTo:function(mw){
+            var self=this;
+            var path=this._ll.map(function(p){return new kakao.maps.LatLng(p[0],p[1]);});
+            this._pgn=new kakao.maps.Polygon({map:mw._m,path:[path],strokeColor:this._s.color||'#F00',strokeWeight:this._s.weight||3,strokeOpacity:this._s.opacity!=null?this._s.opacity:0.8,strokeStyle:this._s.dashArray?'shortdash':'solid',fillColor:this._s.fillColor||'#F00',fillOpacity:this._s.fillOpacity!=null?this._s.fillOpacity:0.2});
+            var last=0;
+            kakao.maps.event.addListener(this._pgn,'click',function(me){
+                if(!me||!me.latLng)return;
+                var ev={latlng:{lat:me.latLng.getLat(),lng:me.latLng.getLng()}},now=Date.now();
+                if(self._ls.click)self._ls.click.forEach(function(f){f(ev);});
+                if(now-last<400&&self._ls.dblclick)self._ls.dblclick.forEach(function(f){f(ev);});
+                last=now;
+            });
+            return this;
+        },
+        setMap:function(m){if(this._pgn)this._pgn.setMap(m?m._m:null);return this;},
+        setPath:function(ll){
+            this._ll=ll;
+            if(this._pgn){var path=ll.map(function(p){return new kakao.maps.LatLng(p[0],p[1]);});this._pgn.setPath([path]);}
+        },
+        getBounds:function(){
+            var lats=this._ll.map(function(p){return p[0];}),lngs=this._ll.map(function(p){return p[1];});
+            var minLat=Math.min.apply(null,lats),maxLat=Math.max.apply(null,lats),minLng=Math.min.apply(null,lngs),maxLng=Math.max.apply(null,lngs);
+            return{getCenter:function(){return{lat:(minLat+maxLat)/2,lng:(minLng+maxLng)/2};}};
+        },
+        on:function(ev,fn){if(!this._ls[ev])this._ls[ev]=[];this._ls[ev].push(fn);return this;}
+    };
+
     function Pop(){this._ll=null;this._c=null;}
     Pop.prototype={
         setLatLng:function(ll){this._ll=ll;return this;},
@@ -115,6 +144,7 @@
         divIcon:function(o){return{html:o.html||''};},
         marker:function(ll,o){var lat=Array.isArray(ll)?ll[0]:ll.lat,lng=Array.isArray(ll)?ll[1]:ll.lng;return new Mkr(lat,lng,(o&&o.icon&&o.icon.html)||'',(o&&o.zIndexOffset)||0);},
         polyline:function(ll,s){return new Ply(ll,s);},
+        polygon:function(ll,s){return new Pgn(ll,s);},
         circleMarker:function(ll,s){var lat=Array.isArray(ll)?ll[0]:ll.lat,lng=Array.isArray(ll)?ll[1]:ll.lng;return new CMkr(lat,lng,s);},
         latLng:function(a,b){return{lat:a,lng:b};},
         popup:function(){return new Pop();},

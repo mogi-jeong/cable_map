@@ -1097,7 +1097,9 @@
             const polylineOpts = { color: cableColor, weight: isCoaxLine ? 2 : 3, opacity: 0.8 };
             if (isNewCable && !isCoaxLine) polylineOpts.dashArray = '10,6';
             const polyline = L.polyline(path, polylineOpts).addTo(map);
-            
+            // 클릭 감지용 투명 굵은 라인 (실제 선이 얇아도 클릭 잘 되도록)
+            const hitLine = L.polyline(path, { color: 'transparent', weight: 12, opacity: 0 }).addTo(map);
+
             // 경유점 삽입 공통 함수 (PC 더블클릭 / 모바일 길게터치 공용)
             function insertWaypointAt(clickedLatLng) {
                 let minDistance = Infinity;
@@ -1212,7 +1214,7 @@
             
             // 케이블 클릭 시 삭제 메뉴
             let _clickTimer = null;
-            polyline.on('click', function(e) {
+            function _onCableClick(e) {
                 L.DomEvent.stopPropagation(e);
                 if (window._nodeJustClicked) return;
                 // 더블클릭 판별: 300ms 내 두 번 클릭이면 경유점 추가 모드
@@ -1238,9 +1240,11 @@
                 const connId = connection.id;
                 showCableInfoPanel(connId, fromNode, toNode, connection, e);
                 }, 300); // 300ms 후 팝업 열기 (더블클릭 대기)
-            });
+            }
+            polyline.on('click', _onCableClick);
+            hitLine.on('click', _onCableClick);
 
-            polylines.push({ line: polyline, label: label, connId: connection.id });
+            polylines.push({ line: polyline, label: label, connId: connection.id, hitLine: hitLine });
 
             // 경간(구간별 거리) 라벨 표시 — 경유점이 있을 때만
             if (path.length > 2) {
@@ -1473,6 +1477,7 @@
             // 기존 폴리라인 삭제
             polylines.forEach(item => {
                 if (item.line) map.removeLayer(item.line);
+                if (item.hitLine) map.removeLayer(item.hitLine);
                 if (item.label) map.removeLayer(item.label);
                 if (item.marker) map.removeLayer(item.marker);
             });
@@ -1893,7 +1898,91 @@
         }
 
         // ==================== 케이블 정보 패널 ====================
+        // 동축 케이블 컨텍스트 메뉴 (규격 + 삭제)
+        function _showCoaxCableMenu(connId, connection, e) {
+            var old = document.getElementById('coaxCableCtxMenu');
+            if (old) old.remove();
+
+            var cores = connection.cores;
+            var coreOptions = [12, 7, 5];
+
+            var wrap = document.createElement('div');
+            wrap.id = 'coaxCableCtxMenu';
+            wrap.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:10010;';
+            wrap.addEventListener('click', function(ev) { if (ev.target === wrap) wrap.remove(); });
+
+            var mapRect = document.getElementById('map').getBoundingClientRect();
+            var clickPt = map.latLngToLayerPoint(e.latlng);
+            var px = mapRect.left + clickPt.x + 10;
+            var py = mapRect.top + clickPt.y - 10;
+
+            var box = document.createElement('div');
+            box.style.cssText = 'position:absolute;left:' + px + 'px;top:' + py + 'px;' +
+                'background:#fff;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,0.25);' +
+                'padding:8px;min-width:160px;';
+
+            // 헤더
+            var header = document.createElement('div');
+            header.style.cssText = 'font-size:11px;color:#888;padding:2px 6px 6px;font-weight:600;';
+            header.textContent = '케이블 규격';
+            box.appendChild(header);
+
+            // 규격 버튼들
+            var btnRow = document.createElement('div');
+            btnRow.style.cssText = 'display:flex;gap:4px;padding:0 4px 6px;';
+            coreOptions.forEach(function(c) {
+                var btn = document.createElement('button');
+                btn.textContent = c + 'C';
+                var isActive = c === cores;
+                btn.style.cssText = 'flex:1;padding:7px 0;border:2px solid ' + (isActive ? '#1a6fd4' : '#ddd') + ';' +
+                    'border-radius:6px;background:' + (isActive ? '#1a6fd4' : '#fff') + ';' +
+                    'color:' + (isActive ? '#fff' : '#333') + ';font-size:13px;font-weight:bold;cursor:pointer;transition:all 0.15s;';
+                if (!isActive) {
+                    btn.onmouseover = function() { btn.style.borderColor = '#1a6fd4'; btn.style.color = '#1a6fd4'; };
+                    btn.onmouseout = function() { btn.style.borderColor = '#ddd'; btn.style.color = '#333'; };
+                }
+                btn.onclick = function() {
+                    if (c !== cores) {
+                        var conn = connections.find(function(x) { return x.id === connId; });
+                        if (conn) { conn.cores = c; saveData(); renderAllConnections(); }
+                    }
+                    wrap.remove();
+                };
+                btnRow.appendChild(btn);
+            });
+            box.appendChild(btnRow);
+
+            // 구분선
+            var hr = document.createElement('div');
+            hr.style.cssText = 'border-top:1px solid #eee;margin:2px 4px;';
+            box.appendChild(hr);
+
+            // 삭제 버튼
+            var delBtn = document.createElement('button');
+            delBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 20 20" fill="none" style="vertical-align:middle;margin-right:4px;"><path d="M5 7h10l-1 10H6L5 7z" stroke="currentColor" stroke-width="1.5"/><path d="M3 5h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M8 3h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>케이블 삭제';
+            delBtn.style.cssText = 'width:100%;padding:7px 10px;border:none;border-radius:6px;background:none;color:#b91c1c;font-size:12px;cursor:pointer;text-align:center;transition:background 0.15s;';
+            delBtn.onmouseover = function() { delBtn.style.background = '#fef2f2'; };
+            delBtn.onmouseout = function() { delBtn.style.background = 'none'; };
+            delBtn.onclick = function() {
+                wrap.remove();
+                deleteConnection(connId);
+            };
+            box.appendChild(delBtn);
+
+            // 화면 밖 보정
+            wrap.appendChild(box);
+            document.body.appendChild(wrap);
+            var boxRect = box.getBoundingClientRect();
+            if (boxRect.right > window.innerWidth) box.style.left = (px - boxRect.width - 20) + 'px';
+            if (boxRect.bottom > window.innerHeight) box.style.top = (window.innerHeight - boxRect.height - 10) + 'px';
+        }
+
         function showCableInfoPanel(connId, fromNode, toNode, connection, e) {
+            // 동축: 컨텍스트 메뉴 스타일
+            if (connection.cableType === 'coax') {
+                _showCoaxCableMenu(connId, connection, e);
+                return;
+            }
             var panel = document.getElementById('cableInfoPanel');
             var isNew = (connection.lineType || 'existing') === 'new';
             var typeDot = isNew ? '#e53935' : '#1a6fd4';

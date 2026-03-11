@@ -37,9 +37,9 @@ function gonggaParsePoles(poleList, cableInfo) {
         var 선로명 = m2 ? m2[1] : poleName;
         var 선로번호 = m2 ? m2[2] : '';
         var 전산화번호 = (관리구 + (번호 ? String(parseInt(번호)).padStart(3, '0') : '')).toUpperCase();
-        // 장비 목록 (최대 3개)
+        // 장비 목록 (최대 3개) — gonggaCode가 있으면 우선 사용 (동축 장비)
         var equipList = (equipByPoleId[node.id] || [])
-            .map(function(eq) { return { 기기코드: EQUIP_CODE[eq.type] || '', 관리번호: eq.name || '' }; })
+            .map(function(eq) { return { 기기코드: eq.gonggaCode || EQUIP_CODE[eq.type] || '', 관리번호: eq.name || '' }; })
             .filter(function(e) { return e.기기코드; })
             .slice(0, 3);
         poles.push({ 관리구: 관리구, 번호: 번호, 선로명: 선로명, 선로번호: 선로번호, 전산화번호: 전산화번호, 케이블규격: 케이블규격, 통신선종류: 통신선종류, 장비목록: equipList });
@@ -133,7 +133,7 @@ function gonggaBuildApplication(poles, invs, fromNode, toNode) {
         '선로명','선로번호','관리구','번호',
         '선로명','선로번호','관리구','번호',
         '설치단','사업자','설치일자','케이블번호','용도',
-        '통선선종류','규격','승인코드','고객공급선종류','봉인번호',
+        '통신선종류','규격','승인코드','고객공급선종류','봉인번호',
         '기기코드','사업자','관리번호',
         '기기코드','사업자','관리번호',
         '기기코드','사업자','관리번호',
@@ -244,9 +244,9 @@ function gonggaBuildApplication(poles, invs, fromNode, toNode) {
         return row;
     }
 
-    // 분류
+    // 분류 (순번은 분류 후 각 카테고리별로 독립 부여)
     var 신규 = [], 정비_신설 = [], 정비_해제 = [];
-    var seq = 1;
+    var 신규_seq = 1, 정비신설_seq = 1, 정비해제_seq = 1;
     for (var i = 0; i < poles.length; i++) {
         var pole = poles[i];
         var prev = i > 0 ? poles[i - 1] : null;
@@ -264,15 +264,17 @@ function gonggaBuildApplication(poles, invs, fromNode, toNode) {
             for (var j = 0; j < invsRows.length; j++) {
                 if (String(_gongga_v(invsRows[j]['통신선종류'])).toUpperCase() === 'O') { optRow = invsRows[j]; break; }
             }
-            정비_신설.push(poleToRow2(pole, prev, nxt, seq, optRow, jaga));
+            정비_신설.push(poleToRow2(pole, prev, nxt, 정비신설_seq, optRow, jaga));
+            정비신설_seq++;
             // 해지(접수3): 장표 전체 그대로 (광+동축 모두)
             invsRows.forEach(function(ir) {
-                정비_해제.push(invsToRow3(ir, seq, jaga));
+                정비_해제.push(invsToRow3(ir, 정비해제_seq, jaga));
+                정비해제_seq++;
             });
         } else {
-            신규.push(poleToRow2(pole, prev, nxt, seq, null, jaga));
+            신규.push(poleToRow2(pole, prev, nxt, 신규_seq, null, jaga));
+            신규_seq++;
         }
-        seq++;
     }
 
     // 본/조 계산
@@ -354,7 +356,6 @@ function gonggaBuildApplication(poles, invs, fromNode, toNode) {
         정비_신설.forEach(function(r) { 정비data.push({ type: 'row2', data: r }); });
     }
     var ws2 = buildSheet(정비data, '공가 가공설비 시설계획서 (정비)');
-    var ws3 = buildSheet([], '공가 가공설비 시설계획서 (해지)');
 
     // 날짜 문자열
     var today = new Date();

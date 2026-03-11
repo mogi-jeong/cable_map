@@ -1730,16 +1730,18 @@
 
             const fromNode = nodes.find(n => n.id === connFrom(conn));
             const toNode = nodes.find(n => n.id === connTo(conn));
+            const _isCoaxC = conn.cableType === 'coax';
+            const _coreUnit = _isCoaxC ? 'C' : '코어';
             document.getElementById('coreChangeInfo').textContent =
-                `${fromNode?.name || '장비'} ↔ ${toNode?.name || '장비'} | 현재: ${conn.cores}코어`;
+                `${fromNode?.name || '장비'} ↔ ${toNode?.name || '장비'} | 현재: ${conn.cores}${_coreUnit}`;
 
-            const validCores = [12, 24, 48, 72, 144, 288, 432];
+            const validCores = _isCoaxC ? [12, 7, 5] : [12, 24, 48, 72, 144, 288, 432];
             const container = document.getElementById('coreChangeSelection');
             container.innerHTML = '';
             validCores.forEach(c => {
                 const btn = document.createElement('button');
                 btn.className = 'fiber-core-btn' + (c === conn.cores ? ' selected' : '');
-                btn.textContent = c + '코어';
+                btn.textContent = c + _coreUnit;
                 btn.dataset.cores = c;
                 btn.onclick = () => {
                     container.querySelectorAll('.fiber-core-btn').forEach(b => b.classList.remove('selected'));

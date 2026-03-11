@@ -1390,52 +1390,111 @@ function _getCoaxCellNodeIds(onuId) {
     return ids;
 }
 
-// ── 공가추출 (도면 vs 설계 비교) ──
+// ── 공가 신청서 자동생성 (동축 셀 단위) ──
 
 function coaxExtractGongga(onuNode) {
+    // 셀 내 동축 장비 + 케이블 수집
     var cellEquip = nodes.filter(function(n) {
         return isCoaxType(n.type) && n.parentOnu === onuNode.id;
     });
+    var cellNodeIds = _getCoaxCellNodeIds(onuNode.id);
+    cellNodeIds.push(onuNode.id);
+
     var cellConns = connections.filter(function(c) {
         if (c.cableType !== 'coax') return false;
-        var ids = _getCoaxCellNodeIds(onuNode.id);
-        ids.push(onuNode.id);
         var from = typeof connFrom === 'function' ? connFrom(c) : c.nodeA;
         var to = typeof connTo === 'function' ? connTo(c) : c.nodeB;
-        return ids.indexOf(from) !== -1 || ids.indexOf(to) !== -1;
+        return cellNodeIds.indexOf(from) !== -1 || cellNodeIds.indexOf(to) !== -1;
     });
 
-    var newEquip = cellEquip.filter(function(n) { return n.coaxStatus === 'new'; });
-    var removedEquip = cellEquip.filter(function(n) { return n.coaxStatus === 'removed'; });
-    var newConns = cellConns.filter(function(c) { return c.coaxStatus === 'new'; });
-    var removedConns = cellConns.filter(function(c) { return c.coaxStatus === 'removed'; });
+    // 전주 수집: 장비의 snappedPoleId + 케이블 경유점의 snappedPole
+    var poleIdSet = {};
+    // ONU 자체의 전주
+    if (onuNode.snappedPoleId) poleIdSet[onuNode.snappedPoleId] = true;
+    // 장비들의 전주
+    cellEquip.forEach(function(eq) {
+        if (eq.snappedPoleId) poleIdSet[eq.snappedPoleId] = true;
+    });
+    // 케이블 경유점 전주
+    cellConns.forEach(function(c) {
+        if (c.waypoints) {
+            c.waypoints.forEach(function(wp) {
+                if (wp.snappedPole) poleIdSet[wp.snappedPole] = true;
+            });
+        }
+    });
 
-    if (newEquip.length === 0 && removedEquip.length === 0 && newConns.length === 0 && removedConns.length === 0) {
-        showStatus('변경사항이 없습니다 (신설/철거 장비/케이블 없음)');
+    // 전주 노드 수집
+    var poleList = [];
+    var poleIds = Object.keys(poleIdSet);
+    poleIds.forEach(function(pid) {
+        var pNode = nodes.find(function(n) { return n.id === pid; });
+        if (pNode && isPoleType(pNode.type)) poleList.push(pNode);
+    });
+
+    if (poleList.length === 0) {
+        showStatus('이 셀에 스냅된 전주가 없습니다');
         return;
     }
 
-    // 요약 팝업
-    var msg = '[ ' + (onuNode.name || 'ONU') + ' 셀 공가 추출 ]\n\n';
-    if (newEquip.length > 0) {
-        msg += '■ 신설 장비 (' + newEquip.length + ')\n';
-        newEquip.forEach(function(n) {
-            var def = COAX_EQUIP_TYPES[n.type];
-            msg += '  - ' + (def ? def.label : n.type) + ' : ' + (n.name || '') + '\n';
-        });
+    // 전주별 동축 장비 매핑 (snappedPoleId 기준)
+    var equipByPoleId = {};
+    // ONU → 전주에 매핑
+    if (onuNode.snappedPoleId) {
+        if (!equipByPoleId[onuNode.snappedPoleId]) equipByPoleId[onuNode.snappedPoleId] = [];
+        equipByPoleId[onuNode.snappedPoleId].push({ type: 'onu', name: onuNode.name || '' });
     }
-    if (removedEquip.length > 0) {
-        msg += '■ 철거 장비 (' + removedEquip.length + ')\n';
-        removedEquip.forEach(function(n) {
-            var def = COAX_EQUIP_TYPES[n.type];
-            msg += '  - ' + (def ? def.label : n.type) + ' : ' + (n.name || '') + '\n';
+    // 동축 장비 → 전주에 매핑
+    cellEquip.forEach(function(eq) {
+        if (!eq.snappedPoleId) return;
+        if (!equipByPoleId[eq.snappedPoleId]) equipByPoleId[eq.snappedPoleId] = [];
+        var def = COAX_EQUIP_TYPES[eq.type];
+        equipByPoleId[eq.snappedPoleId].push({
+            type: eq.type,
+            name: eq.name || (def ? def.label : ''),
+            gonggaCode: def ? def.gongga : ''
         });
-    }
-    if (newConns.length > 0) msg += '■ 신설 케이블: ' + newConns.length + '건\n';
-    if (removedConns.length > 0) msg += '■ 철거 케이블: ' + removedConns.length + '건\n';
+    });
 
-    alert(msg);
-    showStatus('공가 추출 완료');
+    // 대표 케이블 규격 (가장 많이 사용된 규격)
+    var coreCounts = {};
+    cellConns.forEach(function(c) {
+        var k = String(c.cores || 12);
+        coreCounts[k] = (coreCounts[k] || 0) + 1;
+    });
+    var mainCores = '12';
+    var maxCount = 0;
+    for (var k in coreCounts) {
+        if (coreCounts[k] > maxCount) { maxCount = coreCounts[k]; mainCores = k; }
+    }
+
+    // gonggaParsePoles 호출 — 동축 장비의 기기코드 매핑 추가
+    // EQUIP_CODE에 동축 장비 코드 추가 (gongga 값 사용)
+    var COAX_EQUIP_CODE = {};
+    for (var t in COAX_EQUIP_TYPES) {
+        COAX_EQUIP_CODE[t] = COAX_EQUIP_TYPES[t].gongga;
+    }
+    COAX_EQUIP_CODE['onu'] = '3'; // ONU
+
+    // equipByPoleId의 각 장비에 type 대신 기기코드를 넣어서 gonggaParsePoles에 전달
+    var equipForGongga = {};
+    for (var pid in equipByPoleId) {
+        equipForGongga[pid] = equipByPoleId[pid].map(function(eq) {
+            return { type: eq.type, name: eq.name, gonggaCode: COAX_EQUIP_CODE[eq.type] || '' };
+        });
+    }
+
+    // gonggaParsePoles 호출
+    var poles = gonggaParsePoles(poleList, {
+        cores: mainCores,
+        lineType: 'coax',
+        equipByPoleId: equipForGongga
+    });
+
+    // 장표 로딩 후 신청서 생성
+    gonggaLoadInvs(function(invsData) {
+        gonggaBuildApplication(poles, invsData, onuNode, null);
+    });
 }
 
 // ── ONU 장비 이동 (전주 스냅) ──

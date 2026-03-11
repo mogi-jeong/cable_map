@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>AMP Symbol Test</title>
+<style>body{display:flex;gap:40px;padding:40px;background:#f0f0f0;flex-wrap:wrap;align-items:flex-start;}
+.box{background:white;padding:20px;border-radius:8px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.1);}
+.box h3{margin:0 0 10px;font-size:14px;color:#666;}
+.size-row{display:flex;gap:20px;align-items:center;margin-top:10px;}
+.size-row span{font-size:11px;color:#999;}</style>
+</head><body>
+
+<div class="box">
+<h3>TBA (IN1, OUT1, BR2)</h3>
+<svg width="120" height="120" viewBox="0 0 40 44">
+  <!-- 본체: 빨간 둥근 삼각형 -->
+  <path d="M7,5 Q7,3 9,3 L9,3 Q10,3 10,4 L31,18 Q33,19.5 33,20 Q33,20.5 31,22 L10,36 Q9,37 8,37 Q7,37 7,35 Z" fill="#e53935" stroke="#c62828" stroke-width="1"/>
+  <!-- 내부 파란 삼각형 -->
+  <polygon points="18,15 26,20 18,25" fill="#1a6fd4" stroke="none"/>
+  <!-- IN 선 (왼쪽 중앙) -->
+  <line x1="0" y1="20" x2="7" y2="20" stroke="#333" stroke-width="1.5"/>
+  <!-- OUT 선 (오른쪽 B0) -->
+  <line x1="33" y1="20" x2="40" y2="20" stroke="#333" stroke-width="1.5"/>
+  <!-- BR2 선 (위쪽) -->
+  <line x1="12" y1="5" x2="12" y2="0" stroke="#333" stroke-width="1.5"/>
+  <!-- B1 선 (아래쪽) -->
+  <line x1="12" y1="35" x2="12" y2="40" stroke="#333" stroke-width="1.5"/>
+</svg>
+<div class="size-row">
+  <div>
+    <span>30px</span><br>
+    <svg width="30" height="33" viewBox="0 0 40 44">
+      <path d="M7,5 Q7,3 9,3 L9,3 Q10,3 10,4 L31,18 Q33,19.5 33,20 Q33,20.5 31,22 L10,36 Q9,37 8,37 Q7,37 7,35 Z" fill="#e53935" stroke="#c62828" stroke-width="1.2"/>
+      <polygon points="18,15 26,20 18,25" fill="#1a6fd4"/>
+      <line x1="0" y1="20" x2="7" y2="20" stroke="#333" stroke-width="2"/>
+      <line x1="33" y1="20" x2="40" y2="20" stroke="#333" stroke-width="2"/>
+      <line x1="12" y1="5" x2="12" y2="0" stroke="#333" stroke-width="2"/>
+      <line x1="12" y1="35" x2="12" y2="40" stroke="#333" stroke-width="2"/>
+    </svg>
+  </div>
+  <div>
+    <span>22px</span><br>
+    <svg width="22" height="24" viewBox="0 0 40 44">
+      <path d="M7,5 Q7,3 9,3 L9,3 Q10,3 10,4 L31,18 Q33,19.5 33,20 Q33,20.5 31,22 L10,36 Q9,37 8,37 Q7,37 7,35 Z" fill="#e53935" stroke="#c62828" stroke-width="1.5"/>
+      <polygon points="18,15 26,20 18,25" fill="#1a6fd4"/>
+      <line x1="0" y1="20" x2="7" y2="20" stroke="#333" stroke-width="2.5"/>
+      <line x1="33" y1="20" x2="40" y2="20" stroke="#333" stroke-width="2.5"/>
+      <line x1="12" y1="5" x2="12" y2="0" stroke="#333" stroke-width="2.5"/>
+      <line x1="12" y1="35" x2="12" y2="40" stroke="#333" stroke-width="2.5"/>
+    </svg>
+  </div>
+</div>
+</div>
+
+<div class="box">
+<h3>TDA (IN1, BR3 — OUT 없음)</h3>
+<svg width="120" height="120" viewBox="0 0 40 44">
+  <path d="M7,5 Q7,3 9,3 L9,3 Q10,3 10,4 L31,18 Q33,19.5 33,20 Q33,20.5 31,22 L10,36 Q9,37 8,37 Q7,37 7,35 Z" fill="#e53935" stroke="#c62828" stroke-width="1"/>
+  <polygon points="18,15 26,20 18,25" fill="#2E7D32"/>
+  <line x1="0" y1="20" x2="7" y2="20" stroke="#333" stroke-width="1.5"/>
+  <line x1="12" y1="5" x2="12" y2="0" stroke="#333" stroke-width="1.5"/>
+  <line x1="12" y1="35" x2="12" y2="40" stroke="#333" stroke-width="1.5"/>
+</svg>
+</div>
+
+<div class="box">
+<h3>EA (IN1, OUT1 — BR 없음)</h3>
+<svg width="120" height="120" viewBox="0 0 40 44">
+  <path d="M7,5 Q7,3 9,3 L9,3 Q10,3 10,4 L31,18 Q33,19.5 33,20 Q33,20.5 31,22 L10,36 Q9,37 8,37 Q7,37 7,35 Z" fill="#e53935" stroke="#c62828" stroke-width="1"/>
+  <polygon points="18,15 26,20 18,25" fill="#FF9800"/>
+  <line x1="0" y1="20" x2="7" y2="20" stroke="#333" stroke-width="1.5"/>
+  <line x1="33" y1="20" x2="40" y2="20" stroke="#333" stroke-width="1.5"/>
+</svg>
+</div>
+
+<div class="box">
+<h3>지도 배경 위에서 비교</h3>
+<div style="background:#e8e0d8;padding:20px;border-radius:6px;display:flex;gap:30px;align-items:center;">
+  <div style="text-align:center;">
+    <svg width="30" height="33" viewBox="0 0 40 44">
+      <path d="M7,5 Q7,3 9,3 Q10,3 10,4 L31,18 Q33,19.5 33,20 Q33,20.5 31,22 L10,36 Q9,37 8,37 Q7,37 7,35 Z" fill="#e53935" stroke="#c62828" stroke-width="1.2"/>
+      <polygon points="18,15 26,20 18,25" fill="#1a6fd4"/>
+      <line x1="0" y1="20" x2="7" y2="20" stroke="#333" stroke-width="2"/>
+      <line x1="33" y1="20" x2="40" y2="20" stroke="#333" stroke-width="2"/>
+      <line x1="12" y1="5" x2="12" y2="0" stroke="#333" stroke-width="2"/>
+      <line x1="12" y1="35" x2="12" y2="40" stroke="#333" stroke-width="2"/>
+    </svg>
+    <div style="font-size:10px;color:#333;font-weight:bold;">TBA</div>
+  </div>
+  <div style="text-align:center;">
+    <svg width="30" height="33" viewBox="0 0 40 44">
+      <path d="M7,5 Q7,3 9,3 Q10,3 10,4 L31,18 Q33,19.5 33,20 Q33,20.5 31,22 L10,36 Q9,37 8,37 Q7,37 7,35 Z" fill="#e53935" stroke="#c62828" stroke-width="1.2"/>
+      <polygon points="18,15 26,20 18,25" fill="#2E7D32"/>
+      <line x1="0" y1="20" x2="7" y2="20" stroke="#333" stroke-width="2"/>
+      <line x1="12" y1="5" x2="12" y2="0" stroke="#333" stroke-width="2"/>
+      <line x1="12" y1="35" x2="12" y2="40" stroke="#333" stroke-width="2"/>
+    </svg>
+    <div style="font-size:10px;color:#333;font-weight:bold;">TDA</div>
+  </div>
+  <div style="text-align:center;">
+    <svg width="30" height="33" viewBox="0 0 40 44">
+      <path d="M7,5 Q7,3 9,3 Q10,3 10,4 L31,18 Q33,19.5 33,20 Q33,20.5 31,22 L10,36 Q9,37 8,37 Q7,37 7,35 Z" fill="#e53935" stroke="#c62828" stroke-width="1.2"/>
+      <polygon points="18,15 26,20 18,25" fill="#FF9800"/>
+      <line x1="0" y1="20" x2="7" y2="20" stroke="#333" stroke-width="2"/>
+      <line x1="33" y1="20" x2="40" y2="20" stroke="#333" stroke-width="2"/>
+    </svg>
+    <div style="font-size:10px;color:#333;font-weight:bold;">EA</div>
+  </div>
+</div>
+</div>
+
+</body></html>

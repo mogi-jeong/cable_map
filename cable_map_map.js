@@ -158,6 +158,9 @@
                     });
                 }
 
+                window.refreshPoles = refreshPoles;
+                window.scheduleRefreshPoles = scheduleRefreshPoles;
+
                 // 드래그 중 캔버스 실시간 재그리기 (rAF throttle)
                 var _rafPending = false;
                 function _rafDraw() {
@@ -938,8 +941,6 @@
             ctx.restore();
         }
         window.drawPoleCanvas = drawPoleCanvas;
-        window.refreshPoles = refreshPoles;
-        window.scheduleRefreshPoles = scheduleRefreshPoles;
         window.renderAllNodes = renderAllNodes;
 
         // Canvas 클릭 감지 초기화 (initMap 이후 호출)
@@ -949,6 +950,8 @@
                 if (!map || !map._m) return;
                 // 장비 마커 클릭이면 전주 무시 (장비 > 케이블 > 전주)
                 if (window._nodeJustClicked) return;
+                // 장비 이동 모드에서는 전주 클릭 감지 차단 (map.once('click')이 처리)
+                if (window.movingNodeMode) return;
                 // 모달이 열려있으면 전주 클릭 무시 (모달 버튼 클릭 전파 방지)
                 var activeModal = document.querySelector('.modal.active');
                 if (activeModal) return;
@@ -972,7 +975,9 @@
                         if (isPoleType(node.type)) return;
                         var pt = map.latLngToLayerPoint({ lat: node.lat, lng: node.lng });
                         var d = Math.sqrt(Math.pow(pt.x - mx, 2) + Math.pow(pt.y - my, 2));
-                        if (d < 20) equipHit = true;
+                        // 동축 장비는 심볼이 작으므로 히트 반경 축소
+                        var hitR = (typeof isCoaxType === 'function' && isCoaxType(node.type)) ? 10 : 20;
+                        if (d < hitR) equipHit = true;
                     });
                     if (equipHit) return;
                 }
