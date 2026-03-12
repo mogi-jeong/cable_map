@@ -904,7 +904,8 @@
                 ctx.globalAlpha = 1.0;
 
                 // 라벨 그리기 (zoom >= 15, 케이블/장비 연결된 전주만 — 검색 결과는 항상)
-                if (isSearchHit || (showLabel && labelPoleIds)) {
+                if (window._poleLabelsHidden && !isSearchHit) { /* skip */ }
+                else if (isSearchHit || (showLabel && labelPoleIds)) {
                     if (!isSearchHit && !labelPoleIds.has(node.id)) return;
 
                     var poleNum = node.memo ? node.memo.replace('전산화번호: ','').replace(/자가주:true/g,'').trim() : '';

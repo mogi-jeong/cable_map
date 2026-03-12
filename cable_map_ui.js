@@ -363,7 +363,7 @@
             var modal = document.getElementById('nodeInfoModal');
             modal.classList.remove('active');
             selectedNode = null;
-            connectingMode = false; window.connectingMode = false;
+            connectingMode = false; window.connectingMode = false; document.body.classList.remove('connecting-mode');
             connectingFromNode = null;
             connectingToNode = null;
             // 커서 복원
@@ -382,7 +382,7 @@
 
         function startConnecting() {
             closeMenuModal();
-            connectingMode = true; window.connectingMode = true;
+            connectingMode = true; window.connectingMode = true; document.body.classList.add('connecting-mode');
             connectingFromNode = selectedNode;
             pendingWaypoints = [];
             waypointMarkers = [];
@@ -450,6 +450,11 @@
         // 전주 마커 직접 클릭 시 경유점으로 추가 (map.js onNodeClick에서 호출)
         function addPoleAsWaypoint(node) {
             if (!connectingMode || !connectingFromNode) return;
+            // 같은 전주에 이미 경유점이 있으면 무시
+            if (pendingWaypoints.some(function(wp) { return wp.snappedPole === node.id; })) {
+                showStatus('⚠ 이미 경유된 전주입니다: ' + (node.name || node.id));
+                return;
+            }
             var _off = window._polePreviewOffset || { dLat: 0, dLng: 0 };
             var pLat = node.lat + _off.dLat, pLng = node.lng + _off.dLng;
             pendingWaypoints.push({ lat:pLat, lng:pLng, snappedPole:node.id });
@@ -731,7 +736,7 @@
                     '다른 장비에 연결하세요.',
                     '확인'
                 );
-                connectingMode = false; window.connectingMode = false;
+                connectingMode = false; window.connectingMode = false; document.body.classList.remove('connecting-mode');
                 connectingFromNode = null; connectingToNode = null;
                 clearPreviewOnly(); pendingWaypoints = [];
                 return;
@@ -780,7 +785,7 @@
             }
 
             clearPreviewOnly();
-            connectingMode = false; window.connectingMode = false;
+            connectingMode = false; window.connectingMode = false; document.body.classList.remove('connecting-mode');
             connectingFromNode = null; connectingToNode = null;
             selectedNode = null;
             pendingWaypoints = [];
@@ -972,7 +977,7 @@
 
             // 상태 완전 초기화
             document.getElementById('connectionModal').classList.remove('active');
-            connectingMode = false; window.connectingMode = false;
+            connectingMode = false; window.connectingMode = false; document.body.classList.remove('connecting-mode');
             connectingFromNode = null;
             connectingToNode = null;
             selectedNode = null;
@@ -984,7 +989,7 @@
         // 연결 모달 닫기
         function closeConnectionModal() {
             document.getElementById('connectionModal').classList.remove('active');
-            connectingMode = false; window.connectingMode = false;
+            connectingMode = false; window.connectingMode = false; document.body.classList.remove('connecting-mode');
             connectingFromNode = null;
             connectingToNode = null;
             selectedNode = null;
@@ -1004,6 +1009,35 @@
             renderAllConnections();
         }
         window.toggleFiberCables = toggleFiberCables;
+
+        // ── 전주번호 숨김 토글 ──
+        var _poleLabelsHidden = false;
+        function togglePoleLabels() {
+            _poleLabelsHidden = !_poleLabelsHidden;
+            window._poleLabelsHidden = _poleLabelsHidden;
+            var btn = document.getElementById('hidePoleLabelsBtn');
+            if (btn) {
+                btn.classList.toggle('active', _poleLabelsHidden);
+                var slash = document.getElementById('poleLabelSlash');
+                if (slash) slash.setAttribute('display', _poleLabelsHidden ? 'inline' : 'none');
+            }
+            if (typeof drawPoleCanvas === 'function') drawPoleCanvas();
+        }
+        window.togglePoleLabels = togglePoleLabels;
+
+        // ── 경간 숨김 토글 ──
+        var _spanLabelsHidden = false;
+        function toggleSpanLabels() {
+            _spanLabelsHidden = !_spanLabelsHidden;
+            document.body.classList.toggle('hide-span-labels', _spanLabelsHidden);
+            var btn = document.getElementById('hideSpanLabelsBtn');
+            if (btn) {
+                btn.classList.toggle('active', _spanLabelsHidden);
+                var slash = document.getElementById('spanLabelSlash');
+                if (slash) slash.setAttribute('display', _spanLabelsHidden ? 'inline' : 'none');
+            }
+        }
+        window.toggleSpanLabels = toggleSpanLabels;
 
         // _coaxHidden, toggleCoaxVisible() → cable_map_coax.js로 이동
 
@@ -1237,10 +1271,12 @@
                             container.appendChild(inp);
                             inp.focus();
                             inp.select();
+                            var _finished = false;
                             function finish() {
+                                if (_finished) return;
+                                _finished = true;
                                 var v = parseInt(inp.value);
                                 if (inp.value === '' || isNaN(v)) {
-                                    // 빈값 → 자동 계산으로 복원
                                     conn.spanDistances[segIdx] = null;
                                 } else {
                                     conn.spanDistances[segIdx] = v;
@@ -1250,8 +1286,8 @@
                                 renderAllConnections();
                             }
                             inp.addEventListener('keydown', function(e) {
-                                if (e.key === 'Enter') finish();
-                                if (e.key === 'Escape') inp.remove();
+                                if (e.key === 'Enter') { e.preventDefault(); finish(); }
+                                if (e.key === 'Escape') { _finished = true; inp.remove(); }
                             });
                             inp.addEventListener('blur', finish);
                         });
@@ -1475,7 +1511,7 @@
             
             setTimeout(() => {
                 hideStatus();
-            }, 3000);
+            }, 5000);
         }
         
         // 상태 메시지 숨기기
@@ -2316,7 +2352,7 @@
             };
 
             // 주황 원 클릭 → 바로 재개 (DOM capture로 전주 클릭보다 우선)
-            var dotDom = endMarker._ov && endMarker._ov.getContent();
+            var dotDom = endMarker._ov && (endMarker._ov._div || endMarker._ov._content);
             if (dotDom) {
                 dotDom.addEventListener('click', function(e) {
                     e.stopPropagation();
@@ -2331,7 +2367,7 @@
             pausedLine.on('click', function() { resumeConnecting(); });
 
             // 상태 초기화
-            connectingMode = false; window.connectingMode = false;
+            connectingMode = false; window.connectingMode = false; document.body.classList.remove('connecting-mode');
             connectingFromNode = null;
             connectingToNode = null;
             pendingWaypoints = [];
@@ -2365,7 +2401,7 @@
             });
 
             // 연결 모드 재개
-            connectingMode = true; window.connectingMode = true;
+            connectingMode = true; window.connectingMode = true; document.body.classList.add('connecting-mode');
             if (window._setMapCursorMode) window._setMapCursorMode('crosshair');
             else { var mapEl = document.getElementById('map'); if (mapEl) mapEl.style.cursor = 'crosshair'; }
 
@@ -2834,7 +2870,7 @@
             connectingToNode = null;
             pendingWaypoints = [];
             waypointMarkers = [];
-            connectingMode = false; window.connectingMode = false;
+            connectingMode = false; window.connectingMode = false; document.body.classList.remove('connecting-mode');
 
             // 커서 복원
             if (window._setMapCursorMode) window._setMapCursorMode('default');
