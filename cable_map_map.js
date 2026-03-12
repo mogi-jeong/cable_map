@@ -450,7 +450,8 @@
                         cctv: `<svg width="24" height="16" viewBox="0 0 56 36"><polygon points="41,18 56,6 56,30" fill="#1a6fd4" opacity="0.1"/><line x1="41" y1="18" x2="56" y2="6" stroke="#1a6fd4" stroke-width="1" opacity="0.5" stroke-dasharray="2,2"/><line x1="41" y1="18" x2="56" y2="30" stroke="#1a6fd4" stroke-width="1" opacity="0.5" stroke-dasharray="2,2"/><rect x="2" y="4" width="5" height="28" rx="2" fill="#5577aa"/><rect x="5" y="14" width="10" height="8" rx="1" fill="#5577aa"/><rect x="13" y="9" width="28" height="18" rx="5" fill="white" stroke="#1a6fd4" stroke-width="2"/><circle cx="38" cy="18" r="6.5" fill="#e8f0fe" stroke="#1a6fd4" stroke-width="1.5"/><circle cx="38" cy="18" r="3" fill="#1a6fd4" opacity="0.3"/><circle cx="38" cy="18" r="1.5" fill="#1a6fd4"/><circle cx="16" cy="12" r="2" fill="#ff3333"/></svg>`,
                         pole_existing: `<svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="6" fill="#1a6fd4" stroke="white" stroke-width="2"/></svg>`,
                         pole_new:      `<svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="6" fill="#e53935" stroke="white" stroke-width="2"/></svg>`,
-                        pole_removed:  `<svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="6" fill="#333333" stroke="white" stroke-width="2"/></svg>`
+                        pole_removed:  `<svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="6" fill="#333333" stroke="white" stroke-width="2"/></svg>`,
+                        pole_private:  `<svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="6" fill="#9c27b0" stroke="white" stroke-width="2"/></svg>`
                     };
                     const items = [
                         { label: '함체 추가',   type: 'junction'      },
@@ -460,6 +461,7 @@
                         { label: '기설전주',    type: 'pole_existing' },
                         { label: '신설전주',    type: 'pole_new'      },
                         { label: '철거전주',    type: 'pole_removed'  },
+                        { label: '자가주',      type: 'pole_private'  },
                     ];
 
                     items.forEach(item => {
@@ -696,14 +698,13 @@
                 `;
             }
             // ── 전주: 원형 점 (기설=파랑, 신설=빨강, 철거=검정, 자가주=보라) ──
-            if (type === 'pole' || type === 'pole_existing' || type === 'pole_new' || type === 'pole_removed') {
+            if (type === 'pole' || type === 'pole_existing' || type === 'pole_new' || type === 'pole_removed' || type === 'pole_private') {
                 const poleNum = memo ? memo.replace('전산화번호: ', '').replace('자가주:true', '').trim() : '';
                 const poleLabel = (poleNum && name) ? poleNum + '/' + name : (name || '');
-                // 자가주 여부 확인 (memo에 '자가주' 포함 또는 별도 필드)
-                const isSelf = memo && memo.includes('자가주:true');
+                const isSelf = type === 'pole_private' || (memo && memo.includes('자가주:true'));
                 let fillColor;
                 if (isSelf) {
-                    fillColor = '#9b59b6'; // 보라
+                    fillColor = '#9c27b0'; // 보라
                 } else if (type === 'pole_new') {
                     fillColor = '#e53935'; // 빨강
                 } else if (type === 'pole_removed') {
@@ -879,8 +880,8 @@
                 if (x < -50 || y < -50 || x > w + 50 || y > h + 50) return;
 
                 // 색상 결정
-                var isSelf = node.memo && node.memo.includes('자가주:true');
-                var color = isSelf ? '#9b59b6'
+                var isSelf = node.type === 'pole_private' || (node.memo && node.memo.includes('자가주:true'));
+                var color = isSelf ? '#9c27b0'
                     : node.type === 'pole_new'     ? '#e53935'
                     : node.type === 'pole_removed'  ? '#333333'
                     : '#1a6fd4';
@@ -908,6 +909,7 @@
 
                     var poleNum = node.memo ? node.memo.replace('전산화번호: ','').replace(/자가주:true/g,'').trim() : '';
                     var label   = (poleNum && node.name) ? poleNum + '/' + node.name : (node.name || '');
+                    if (!label && (node.type === 'pole_private' || (node.memo && node.memo.includes('자가주:true')))) label = '자가주';
                     if (!label) return;
 
                     var angle  = node.labelAngle  != null ? node.labelAngle  : 0;
@@ -933,7 +935,7 @@
                         ctx.stroke();
                     }
                     // 텍스트
-                    ctx.fillStyle = isSelected ? '#9b59b6' : (window._isSkyView ? '#1a1a1a' : '#333');
+                    ctx.fillStyle = isSelected ? '#9b59b6' : isSelf ? '#9c27b0' : (window._isSkyView ? '#1a1a1a' : '#333');
                     ctx.fillText(label, 5, 0);
                     ctx.restore();
                 }
@@ -1069,7 +1071,7 @@
 
         // 노드 클릭
         function isPoleType(t) {
-            return t==='pole'||t==='pole_existing'||t==='pole_new'||t==='pole_removed';
+            return t==='pole'||t==='pole_existing'||t==='pole_new'||t==='pole_removed'||t==='pole_private';
         }
 
         // 장비 위치 선택용 원 오버레이
@@ -1196,7 +1198,7 @@
         }
         
         function showPoleModal(node) {
-            const colors = { pole:'#1a6fd4', pole_existing:'#1a6fd4', pole_new:'#e53935', pole_removed:'#333333' };
+            const colors = { pole:'#1a6fd4', pole_existing:'#1a6fd4', pole_new:'#e53935', pole_removed:'#333333', pole_private:'#9c27b0' };
             // 현재 타입 (구버전 'pole' → pole_existing 취급)
             const curType = (node.type === 'pole') ? 'pole_existing' : node.type;
             const isSelf = (node.memo||'').includes('자가주:true');
@@ -1220,10 +1222,10 @@
                     <div style="margin-bottom:14px;">
                         <label style="font-size:12px;color:#888;display:block;margin-bottom:6px;">전주 종류</label>
                         <div style="display:flex;gap:6px;" id="poleTypeButtons">
-                            ${['pole_existing','pole_new','pole_removed'].map(t => {
-                                const active = t === curType;
+                            ${['pole_existing','pole_new','pole_removed','pole_private'].map(t => {
+                                const active = t === curType || (t === 'pole_private' && isSelf && curType !== 'pole_private');
                                 const c = colors[t];
-                                const lbl = {pole_existing:'기설',pole_new:'신설',pole_removed:'철거'}[t];
+                                const lbl = {pole_existing:'기설',pole_new:'신설',pole_removed:'철거',pole_private:'자가'}[t];
                                 return `<button id="poleTypeBtn_${t}" onclick="selectPoleType('${node.id}','${t}')"
                                     style="flex:1;padding:8px 4px;border-radius:8px;border:2px solid ${active?c:'#ddd'};background:${active?c+'22':'#fff'};font-size:13px;cursor:pointer;font-weight:${active?'bold':'normal'};transition:all 0.15s;">
                                     <span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${c};margin-right:4px;vertical-align:middle;"></span>${lbl}</button>`;
@@ -1342,9 +1344,9 @@
 
         // 전주 종류 선택 (모달 닫지 않고 버튼 스타일만 변경)
         function selectPoleType(nodeId, newType) {
-            const colors = { pole_existing:'#1a6fd4', pole_new:'#e53935', pole_removed:'#333333' };
+            const colors = { pole_existing:'#1a6fd4', pole_new:'#e53935', pole_removed:'#333333', pole_private:'#9c27b0' };
             window._currentPoleType = newType;
-            ['pole_existing','pole_new','pole_removed'].forEach(t => {
+            ['pole_existing','pole_new','pole_removed','pole_private'].forEach(t => {
                 const btn = document.getElementById('poleTypeBtn_'+t);
                 if (!btn) return;
                 const active = t === newType;

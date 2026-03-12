@@ -534,6 +534,11 @@
                     showStatus('⚠ 전주를 선택하세요 (전주 근처를 클릭해주세요)');
                     return;
                 }
+                // 같은 전주에 이미 경유점이 있으면 무시
+                if (pendingWaypoints.some(function(wp) { return wp.snappedPole === nearPole.id; })) {
+                    showStatus('⚠ 이미 경유된 전주입니다: ' + (nearPole.name || nearPole.id));
+                    return;
+                }
                 pendingWaypoints.push({ lat: lat, lng: lng, snappedPole: nearPole.id });
                 var marker = L.circleMarker([lat, lng], {
                     radius: 4, fillColor: '#FF6D00', color: '#fff', weight: 2, fillOpacity: 0.8, zIndexOffset: 2000
@@ -548,6 +553,11 @@
             // 광 모드: 기존 로직 (전주 스냅 + 자유점)
             var fiberPole = findNearestPole(lat, lng);
             if (fiberPole) {
+                // 같은 전주에 이미 경유점이 있으면 무시
+                if (pendingWaypoints.some(function(wp) { return wp.snappedPole === fiberPole.id; })) {
+                    showStatus('⚠ 이미 경유된 전주입니다: ' + (fiberPole.name || fiberPole.id));
+                    return;
+                }
                 var _off = window._polePreviewOffset || { dLat: 0, dLng: 0 };
                 lat = fiberPole.lat + _off.dLat; lng = fiberPole.lng + _off.dLng;
             }
@@ -1097,67 +1107,6 @@
             const polylineOpts = { color: cableColor, weight: isCoaxLine ? 2 : 3, opacity: 0.8 };
             if (isNewCable && !isCoaxLine) polylineOpts.dashArray = '10,6';
             const polyline = L.polyline(path, polylineOpts).addTo(map);
-            // 클릭 감지용 투명 굵은 라인 (실제 선이 얇아도 클릭 잘 되도록)
-            const hitLine = L.polyline(path, { color: '#000000', weight: 12, opacity: 0.01 }).addTo(map);
-
-            // 경유점 삽입 공통 함수 (PC 더블클릭 / 모바일 길게터치 공용)
-            function insertWaypointAt(clickedLatLng) {
-                let minDistance = Infinity;
-                let insertIndex = 0;
-
-                for (let i = 0; i < path.length - 1; i++) {
-                    const p1 = L.latLng(path[i][0], path[i][1]);
-                    const p2 = L.latLng(path[i + 1][0], path[i + 1][1]);
-                    const distance = L.LineUtil.pointToSegmentDistance(
-                        map.latLngToLayerPoint(clickedLatLng),
-                        map.latLngToLayerPoint(p1),
-                        map.latLngToLayerPoint(p2)
-                    );
-                    if (distance < minDistance) {
-                        minDistance = distance;
-                        insertIndex = i;
-                    }
-                }
-
-                connection.waypoints.splice(insertIndex, 0, {
-                    lat: clickedLatLng.lat,
-                    lng: clickedLatLng.lng
-                });
-                saveData();
-                renderAllConnections();
-                showStatus('점이 추가되었습니다');
-            }
-
-            // 더블클릭: click 핸들러에서 처리
-
-            // 모바일: 길게 터치(500ms)로 점 추가
-            (function() {
-                let longPressTimer = null;
-                let touchMoved = false;
-
-                polyline.on('touchstart', function(e) {
-                    touchMoved = false;
-                    longPressTimer = setTimeout(function() {
-                        if (!touchMoved) {
-                            const touch = e.originalEvent.touches[0];
-                            const latlng = map.containerPointToLatLng(
-                                L.point(touch.clientX - map.getContainer().getBoundingClientRect().left,
-                                        touch.clientY - map.getContainer().getBoundingClientRect().top)
-                            );
-                            insertWaypointAt(latlng);
-                        }
-                    }, 500);
-                });
-
-                polyline.on('touchmove', function() {
-                    touchMoved = true;
-                    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
-                });
-
-                polyline.on('touchend touchcancel', function() {
-                    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
-                });
-            })();
             
             // 라벨을 전체 경로의 중간 지점에 표시
             let labelLat, labelLng;
@@ -1196,7 +1145,7 @@
             if (labelAngle < -90) labelAngle += 180;
 
             const isCoaxCable = connection.cableType === 'coax';
-            const typeLabel = isCoaxCable ? '' : (isNewCable ? '신설 ' : '기설 ');
+            const typeLabel = isCoaxCable ? '' : (isNewCable ? '신설 ' : '');
             const coreLabel = isCoaxCable ? connection.cores + 'C' : connection.cores + '코어';
             const labelHTML = `<div class="connection-label" style="color:${cableColor};transform:rotate(${labelAngle.toFixed(1)}deg) translateY(-8px);transform-origin:center center;white-space:nowrap;">${typeLabel}${coreLabel}</div>`;
 
@@ -1212,20 +1161,10 @@
                 zIndexOffset: -1000
             }).addTo(map);
             
-            // 케이블 클릭 시 삭제 메뉴
-            let _clickTimer = null;
+            // 케이블 클릭 시 정보 패널
             function _onCableClick(e) {
                 L.DomEvent.stopPropagation(e);
                 if (window._nodeJustClicked) return;
-                // 더블클릭 판별: 300ms 내 두 번 클릭이면 경유점 추가 모드
-                if (_clickTimer) {
-                    clearTimeout(_clickTimer);
-                    _clickTimer = null;
-                    startWaypointInsertMode(connection, path);
-                    return;
-                }
-                _clickTimer = setTimeout(function() {
-                    _clickTimer = null;
                 // 줌 레벨에 따라 동적 THRESHOLD (고배율일수록 더 좁게)
                 const zoomLevel = map ? map.getZoom() : 13;
                 const THRESHOLD = 0.0003 * Math.pow(2, 13 - zoomLevel);
@@ -1239,15 +1178,14 @@
                 const toNode = nodes.find(n => n.id === connTo(connection));
                 const connId = connection.id;
                 showCableInfoPanel(connId, fromNode, toNode, connection, e);
-                }, 300); // 300ms 후 팝업 열기 (더블클릭 대기)
             }
             polyline.on('click', _onCableClick);
-            hitLine.on('click', _onCableClick);
 
-            polylines.push({ line: polyline, label: label, connId: connection.id, hitLine: hitLine });
+            polylines.push({ line: polyline, label: label, connId: connection.id });
 
             // 경간(구간별 거리) 라벨 표시 — 경유점이 있을 때만
             if (path.length > 2) {
+                if (!connection.spanDistances) connection.spanDistances = [];
                 for (let si = 0; si < path.length - 1; si++) {
                     var sLat1 = path[si][0], sLng1 = path[si][1];
                     var sLat2 = path[si+1][0], sLng2 = path[si+1][1];
@@ -1256,8 +1194,10 @@
                     var sa = Math.sin(dLat/2)*Math.sin(dLat/2) +
                              Math.cos(sLat1*Math.PI/180)*Math.cos(sLat2*Math.PI/180)*
                              Math.sin(dLng/2)*Math.sin(dLng/2);
-                    var spanM = Math.round(6371000 * 2 * Math.atan2(Math.sqrt(sa), Math.sqrt(1-sa)));
-                    if (spanM < 1) continue;
+                    var autoM = Math.round(6371000 * 2 * Math.atan2(Math.sqrt(sa), Math.sqrt(1-sa)));
+                    if (autoM < 1 && !connection.spanDistances[si]) continue;
+                    var spanM = connection.spanDistances[si] || autoM;
+                    var isCustom = !!connection.spanDistances[si];
                     var sMidLat = (sLat1 + sLat2) / 2;
                     var sMidLng = (sLng1 + sLng2) / 2;
                     // 케이블 방향 각도 계산 (화면 픽셀 기준)
@@ -1267,16 +1207,55 @@
                     // 글씨가 뒤집히지 않게 -90~90 범위로 보정
                     if (angleDeg > 90) angleDeg -= 180;
                     if (angleDeg < -90) angleDeg += 180;
+                    var spanStyle = 'color:' + cableColor + ';transform:rotate(' + angleDeg.toFixed(1) + 'deg) translateY(8px);transform-origin:center center;cursor:pointer;'
+                        + (isCustom ? 'font-weight:bold;' : '');
                     var spanIcon = L.divIcon({
-                        html: '<div class="span-label" style="color:' + cableColor + ';transform:rotate(' + angleDeg.toFixed(1) + 'deg) translateY(8px);transform-origin:center center;">' + spanM + 'm</div>',
+                        html: '<div class="span-label" style="' + spanStyle + '" data-conn-id="' + connection.id + '" data-seg-idx="' + si + '" data-auto="' + autoM + '">' + spanM + 'm</div>',
                         className: '',
                         iconSize: [50, 16],
                         iconAnchor: [25, 8]
                     });
                     var spanMarker = L.marker([sMidLat, sMidLng], {
                         icon: spanIcon,
-                        zIndexOffset: -2000
+                        zIndexOffset: 3000
                     }).addTo(map);
+                    // 클릭 → 인라인 입력
+                    (function(conn, segIdx, autoVal, marker, midLat, midLng, angle, color) {
+                        spanMarker.on('click', function() {
+                            // 기존 인라인 input 제거
+                            var old = document.getElementById('spanInlineInput');
+                            if (old) old.remove();
+                            var container = map.getContainer();
+                            var pt = map.latLngToLayerPoint({ lat: midLat, lng: midLng });
+                            var inp = document.createElement('input');
+                            inp.id = 'spanInlineInput';
+                            inp.type = 'number';
+                            inp.placeholder = autoVal + '';
+                            inp.value = conn.spanDistances[segIdx] || '';
+                            inp.style.cssText = 'position:absolute;left:' + (pt.x - 30) + 'px;top:' + (pt.y - 12) + 'px;width:60px;height:24px;z-index:99999;'
+                                + 'text-align:center;font-size:12px;border:2px solid ' + color + ';border-radius:4px;outline:none;background:#fff;';
+                            container.appendChild(inp);
+                            inp.focus();
+                            inp.select();
+                            function finish() {
+                                var v = parseInt(inp.value);
+                                if (inp.value === '' || isNaN(v)) {
+                                    // 빈값 → 자동 계산으로 복원
+                                    conn.spanDistances[segIdx] = null;
+                                } else {
+                                    conn.spanDistances[segIdx] = v;
+                                }
+                                inp.remove();
+                                saveData();
+                                renderAllConnections();
+                            }
+                            inp.addEventListener('keydown', function(e) {
+                                if (e.key === 'Enter') finish();
+                                if (e.key === 'Escape') inp.remove();
+                            });
+                            inp.addEventListener('blur', finish);
+                        });
+                    })(connection, si, autoM, spanMarker, sMidLat, sMidLng, angleDeg, cableColor);
                     polylines.push({ marker: spanMarker, connId: connection.id });
                 }
             }
@@ -1477,7 +1456,6 @@
             // 기존 폴리라인 삭제
             polylines.forEach(item => {
                 if (item.line) map.removeLayer(item.line);
-                if (item.hitLine) map.removeLayer(item.hitLine);
                 if (item.label) map.removeLayer(item.label);
                 if (item.marker) map.removeLayer(item.marker);
             });

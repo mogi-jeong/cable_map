@@ -842,9 +842,8 @@
             if (!svg) return;
             
             svg.innerHTML = '';
-            
+
             currentWireMapConnections.forEach((connection, nodeIndex) => {
-                const lineColor = outLineColors[nodeIndex % outLineColors.length];
                 connection.portMapping.forEach(mapping => {
                     const [fromPort, toPort] = mapping;
 
@@ -856,28 +855,43 @@
                     }
                     const fromBtn = document.getElementById(`from-${inIdx}-${fromPort}`);
                     const toBtn = document.getElementById(`to-${nodeIndex}-${toPort}`);
-                    
+
                     if (!fromBtn || !toBtn) return;
-                    
+
                     const fromRect = fromBtn.getBoundingClientRect();
                     const toRect = toBtn.getBoundingClientRect();
                     const containerRect = svg.parentElement.getBoundingClientRect();
-                    
+
                     const x1 = fromRect.right - containerRect.left;
                     const y1 = fromRect.top + fromRect.height / 2 - containerRect.top;
                     const x2 = toRect.left - containerRect.left;
                     const y2 = toRect.top + toRect.height / 2 - containerRect.top;
-                    
-                    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-                    line.setAttribute('x1', x1);
-                    line.setAttribute('y1', y1);
-                    line.setAttribute('x2', x2);
-                    line.setAttribute('y2', y2);
-                    line.setAttribute('stroke', lineColor);
-                    line.setAttribute('stroke-width', '3');
-                    line.setAttribute('opacity', '0.85');
-                    
-                    svg.appendChild(line);
+                    const mx = (x1 + x2) / 2;
+                    const my = (y1 + y2) / 2;
+
+                    // IN 코어색 (왼쪽 절반)
+                    var fromColor = wireMapCoreColors[(fromPort - 1) % wireMapCoreColors.length];
+                    var line1 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                    line1.setAttribute('x1', x1);
+                    line1.setAttribute('y1', y1);
+                    line1.setAttribute('x2', mx);
+                    line1.setAttribute('y2', my);
+                    line1.setAttribute('stroke', fromColor);
+                    line1.setAttribute('stroke-width', '3');
+                    line1.setAttribute('opacity', '0.85');
+                    svg.appendChild(line1);
+
+                    // OUT 코어색 (오른쪽 절반)
+                    var toColor = wireMapCoreColors[(toPort - 1) % wireMapCoreColors.length];
+                    var line2 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                    line2.setAttribute('x1', mx);
+                    line2.setAttribute('y1', my);
+                    line2.setAttribute('x2', x2);
+                    line2.setAttribute('y2', y2);
+                    line2.setAttribute('stroke', toColor);
+                    line2.setAttribute('stroke-width', '3');
+                    line2.setAttribute('opacity', '0.85');
+                    svg.appendChild(line2);
                 });
             });
         }
@@ -1671,16 +1685,30 @@
                             var y1 = fRect.top + fRect.height / 2 - rowRect.top;
                             var x2 = tRect.left - rowRect.left;
                             var y2 = tRect.top + tRect.height / 2 - rowRect.top;
+                            var mx = (x1 + x2) / 2;
+                            var my = (y1 + y2) / 2;
 
-                            var line = document.createElementNS(svgNS, 'line');
-                            line.setAttribute('x1', x1);
-                            line.setAttribute('y1', y1);
-                            line.setAttribute('x2', x2);
-                            line.setAttribute('y2', y2);
-                            line.setAttribute('stroke', '#e67e22');
-                            line.setAttribute('stroke-width', '2');
-                            line.setAttribute('opacity', '0.75');
-                            connSvg.appendChild(line);
+                            var fromColor = wireMapCoreColors[(fromPort - 1) % wireMapCoreColors.length];
+                            var line1 = document.createElementNS(svgNS, 'line');
+                            line1.setAttribute('x1', x1);
+                            line1.setAttribute('y1', y1);
+                            line1.setAttribute('x2', mx);
+                            line1.setAttribute('y2', my);
+                            line1.setAttribute('stroke', fromColor);
+                            line1.setAttribute('stroke-width', '2');
+                            line1.setAttribute('opacity', '0.75');
+                            connSvg.appendChild(line1);
+
+                            var toColor = wireMapCoreColors[(toPort - 1) % wireMapCoreColors.length];
+                            var line2 = document.createElementNS(svgNS, 'line');
+                            line2.setAttribute('x1', mx);
+                            line2.setAttribute('y1', my);
+                            line2.setAttribute('x2', x2);
+                            line2.setAttribute('y2', y2);
+                            line2.setAttribute('stroke', toColor);
+                            line2.setAttribute('stroke-width', '2');
+                            line2.setAttribute('opacity', '0.75');
+                            connSvg.appendChild(line2);
                         });
                     }
 

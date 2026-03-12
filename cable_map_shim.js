@@ -148,7 +148,7 @@
     Ply.prototype={
         addTo:function(mw){
             var self=this,path=this._ll.map(function(p){return new naver.maps.LatLng(p[0],p[1]);});
-            this._line=new naver.maps.Polyline({map:mw._m,path:path,strokeColor:this._s.color||'#F00',strokeWeight:this._s.weight||3,strokeOpacity:this._s.opacity!=null?this._s.opacity:0.8,strokeStyle:this._s.dashArray?'shortdash':'solid'});
+            this._line=new naver.maps.Polyline({map:mw._m,path:path,strokeColor:this._s.color||'#F00',strokeWeight:this._s.weight||3,strokeOpacity:this._s.opacity!=null?this._s.opacity:0.8,strokeStyle:this._s.dashArray?'shortdash':'solid',clickable:true});
             var last=0;
             naver.maps.Event.addListener(this._line,'click',function(e){
                 if(!e||!e.coord)return;
