@@ -1486,14 +1486,14 @@
         </div>
     </div>
     
-    <!-- 카카오맵 SDK -->
-    <script type="text/javascript" src="//dapi.kakao.com/v2/maps/sdk.js?appkey=4f478e9f00aaf4d8b3432db26f3d1aa2&autoload=false&libraries=services"></script>
+    <!-- 네이버맵 SDK -->
+    <script type="text/javascript" src="https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=zv4loekcwu&submodules=geocoder"></script>
     <!-- SheetJS (Excel 출력) -->
     <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
     <script src="html2canvas.min.js"></script>
     <script src="jspdf.umd.min.js"></script>
 
-    <!-- 카카오맵 shim + 앱 모듈 -->
+    <!-- 네이버맵 shim + 앱 모듈 -->
     <script src="cable_map_shim.js"></script>
     <script src="cable_map_data.js"></script>
     <script src="cable_map_map.js"></script>
@@ -1505,9 +1505,7 @@
 
     <!-- 앱 시작 -->
     <script>
-        kakao.maps.load(function() {
-            initMap();
-        });
+        initMap();
     </script>
     </body>
 </html>

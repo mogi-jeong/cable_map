@@ -545,8 +545,8 @@ function getCoaxMarkerHTML(type, name, coaxStatus) {
     var label = name || def.label;
     // 줌 레벨에 따라 심볼 크기 동적 조절 (zoom = 18 - kakaoLevel)
     var zoom = (map && map.getZoom) ? map.getZoom() : 15;
-    var S = zoom >= 17 ? 18 : zoom >= 16 ? 16 : zoom >= 15 ? 14 : zoom >= 14 ? 12 : 8;
-    var FS = zoom >= 17 ? 8 : zoom >= 16 ? 7 : zoom >= 15 ? 7 : zoom >= 14 ? 6 : 5; // 라벨 폰트
+    var S = zoom >= 18 ? 18 : zoom >= 17 ? 16 : zoom >= 16 ? 14 : zoom >= 15 ? 12 : 8;
+    var FS = zoom >= 18 ? 8 : zoom >= 17 ? 7 : zoom >= 16 ? 7 : zoom >= 15 ? 6 : 5; // 라벨 폰트
 
     // ── 증폭기: 한마루 스타일 원형 ──
     if (type === 'coax_tba') {
@@ -1087,7 +1087,7 @@ function _coaxRenderEditHandles(onuNode) {
                 e.preventDefault();
                 _coaxBdragIdx = idx;
                 _coaxBdragActive = true;
-                map._m.setDraggable(false);
+                map.setDraggable(false);
             });
             // 우클릭 → 꼭짓점 삭제 (최소 3개 유지)
             d.addEventListener('contextmenu', function(e) {
@@ -1098,8 +1098,8 @@ function _coaxRenderEditHandles(onuNode) {
                 saveData();
                 _coaxRenderBoundaryPolygon(onuNode);
             });
-            var ov = new kakao.maps.CustomOverlay({
-                position: new kakao.maps.LatLng(pts[idx].lat, pts[idx].lng),
+            var ov = new NaverCustomOverlay({
+                position: new naver.maps.LatLng(pts[idx].lat, pts[idx].lng),
                 content: d, map: map._m, zIndex: 20, yAnchor: 0.5, xAnchor: 0.5
             });
             _coaxBoundaryVtxHandles.push({ ov: ov, div: d });
@@ -1123,8 +1123,8 @@ function _coaxRenderEditHandles(onuNode) {
                 saveData();
                 _coaxRenderBoundaryPolygon(onuNode);
             });
-            var ov = new kakao.maps.CustomOverlay({
-                position: new kakao.maps.LatLng(mLat, mLng),
+            var ov = new NaverCustomOverlay({
+                position: new naver.maps.LatLng(mLat, mLng),
                 content: d, map: map._m, zIndex: 19, yAnchor: 0.5, xAnchor: 0.5
             });
             _coaxBoundaryMidHandles.push({ ov: ov, div: d });
@@ -1180,12 +1180,12 @@ document.addEventListener('mousemove', function(e) {
     }
     // 핸들 위치 갱신
     var handle = _coaxBoundaryVtxHandles[_coaxBdragIdx];
-    if (handle) handle.ov.setPosition(new kakao.maps.LatLng(ll.lat, ll.lng));
+    if (handle) handle.ov.setPosition(new naver.maps.LatLng(ll.lat, ll.lng));
 });
 
 document.addEventListener('mouseup', function() {
     if (_coaxBdragActive && _coaxBoundaryEditOnu) {
-        map._m.setDraggable(true);
+        map.setDraggable(true);
         _coaxBdragActive = false;
         _coaxBdragIdx = -1;
         saveData();
@@ -1554,8 +1554,8 @@ function _showCoaxRouteLabel(poleName, lat, lng) {
     var d = document.createElement('div');
     d.style.cssText = 'background:#FF6D00;color:white;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:700;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,0.3);';
     d.textContent = poleName + ' 경유';
-    _coaxRouteLabel = new kakao.maps.CustomOverlay({
-        position: new kakao.maps.LatLng(lat, lng),
+    _coaxRouteLabel = new NaverCustomOverlay({
+        position: new naver.maps.LatLng(lat, lng),
         content: d, map: map._m, zIndex: 30, yAnchor: 2.5, xAnchor: 0.5
     });
 }

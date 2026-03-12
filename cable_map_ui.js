@@ -397,7 +397,7 @@
             map.off('click', onMapClickForWaypoint);
             map.on('click', onMapClickForWaypoint);
             window._mousemoveHandler = onMapMousemoveForSnap;
-            kakao.maps.event.addListener(map._m, 'mousemove', onMapMousemoveForSnap);
+            _nEvent.add(map._m, 'mousemove', onMapMousemoveForSnap);
         }
 
         // 두 좌표 간 거리(m)
@@ -427,20 +427,20 @@
         // 마우스 이동: 스냅 원 표시
         function onMapMousemoveForSnap(me) {
             if (!connectingMode) return;
-            const lat=me.latLng.getLat(), lng=me.latLng.getLng();
+            const lat=me.coord.lat(), lng=me.coord.lng();
             if (snapCircleOverlay) { snapCircleOverlay.setMap(null); snapCircleOverlay=null; }
             if (snapHighlight) { snapHighlight.setMap(null); snapHighlight=null; }
             var _snapR = _isCoaxDesignConnecting() ? COAX_SNAP_RADIUS_M : SNAP_RADIUS_M;
             const nearPole = findNearestPoleR(lat,lng,_snapR);
-            snapCircleOverlay = new kakao.maps.Circle({
-                map:map._m, center:new kakao.maps.LatLng(lat,lng), radius:_snapR,
+            snapCircleOverlay = new naver.maps.Circle({
+                map:map._m, center:new naver.maps.LatLng(lat,lng), radius:_snapR,
                 strokeWeight:1, strokeColor:nearPole?'#00cc44':'#aaaaaa', strokeOpacity:0.8,
                 fillColor:nearPole?'#00cc44':'#cccccc', fillOpacity:0.15
             });
             if (nearPole) {
                 var _off = window._polePreviewOffset || { dLat: 0, dLng: 0 };
-                snapHighlight = new kakao.maps.Circle({
-                    map:map._m, center:new kakao.maps.LatLng(nearPole.lat+_off.dLat,nearPole.lng+_off.dLng), radius:3,
+                snapHighlight = new naver.maps.Circle({
+                    map:map._m, center:new naver.maps.LatLng(nearPole.lat+_off.dLat,nearPole.lng+_off.dLng), radius:3,
                     strokeWeight:2, strokeColor:'#00cc44', strokeOpacity:1,
                     fillColor:'#00cc44', fillOpacity:0.8
                 });
@@ -593,7 +593,7 @@
             if (snapCircleOverlay) { snapCircleOverlay.setMap(null); snapCircleOverlay=null; }
             if (snapHighlight) { snapHighlight.setMap(null); snapHighlight=null; }
             _clearCoaxRouteLabel();
-            if(window._mousemoveHandler){kakao.maps.event.removeListener(map._m,'mousemove',window._mousemoveHandler);window._mousemoveHandler=null;}
+            if(window._mousemoveHandler){_nEvent.remove(map._m,'mousemove',window._mousemoveHandler);window._mousemoveHandler=null;}
             map.off('click', onMapClickForWaypoint);
         }
         // 전체 초기화 (취소 시)
@@ -1098,7 +1098,7 @@
             if (isNewCable && !isCoaxLine) polylineOpts.dashArray = '10,6';
             const polyline = L.polyline(path, polylineOpts).addTo(map);
             // 클릭 감지용 투명 굵은 라인 (실제 선이 얇아도 클릭 잘 되도록)
-            const hitLine = L.polyline(path, { color: 'transparent', weight: 12, opacity: 0 }).addTo(map);
+            const hitLine = L.polyline(path, { color: '#000000', weight: 12, opacity: 0.01 }).addTo(map);
 
             // 경유점 삽입 공통 함수 (PC 더블클릭 / 모바일 길게터치 공용)
             function insertWaypointAt(clickedLatLng) {
@@ -1227,7 +1227,7 @@
                 _clickTimer = setTimeout(function() {
                     _clickTimer = null;
                 // 줌 레벨에 따라 동적 THRESHOLD (고배율일수록 더 좁게)
-                const zoomLevel = map._m ? map.getZoom() : 13;
+                const zoomLevel = map ? map.getZoom() : 13;
                 const THRESHOLD = 0.0003 * Math.pow(2, 13 - zoomLevel);
                 const clickLat = e.latlng.lat, clickLng = e.latlng.lng;
                 const nearNode = nodes.find(n =>
@@ -1384,10 +1384,10 @@
 
             // 기존 핸들러 제거 후 새 등록
             if (_waypointMapClickHandler) {
-                if(_waypointClickListener){kakao.maps.event.removeListener(map._m,'click',_waypointClickListener);_waypointClickListener=null;}
+                if(_waypointClickListener){_nEvent.remove(map._m,'click',_waypointClickListener);_waypointClickListener=null;}
             }
             _waypointMapClickHandler = function(mouseEvent) {
-                const latlng = { lat: mouseEvent.latLng.getLat(), lng: mouseEvent.latLng.getLng() };
+                const latlng = { lat: mouseEvent.coord.lat(), lng: mouseEvent.coord.lng() };
                 // 가장 가까운 구간 찾기
                 let minDist = Infinity, insertIndex = 0;
                 for (let i = 0; i < _waypointInsertPath.length - 1; i++) {
@@ -1406,13 +1406,13 @@
                 cancelWaypointInsertMode();
                 showStatus('📍 경유점이 추가되었습니다');
             };
-            kakao.maps.event.addListener(map._m, 'click', _waypointMapClickHandler);
+            _nEvent.add(map._m, 'click', _waypointMapClickHandler);
             _waypointClickListener = _waypointMapClickHandler;
         }
 
         function cancelWaypointInsertMode() {
             if (_waypointMapClickHandler) {
-                if(_waypointClickListener){kakao.maps.event.removeListener(map._m,'click',_waypointClickListener);_waypointClickListener=null;}
+                if(_waypointClickListener){_nEvent.remove(map._m,'click',_waypointClickListener);_waypointClickListener=null;}
                 _waypointMapClickHandler = null;
             }
             _waypointInsertConn = null;
@@ -1562,21 +1562,21 @@
 
             // 동축 장비: 마우스 이동 시 스냅 원 표시
             function _onMoveMousemove(me) {
-                var lat = me.latLng.getLat(), lng = me.latLng.getLng();
+                var lat = me.coord.lat(), lng = me.coord.lng();
                 if (_moveSnapCircle) { _moveSnapCircle.setMap(null); _moveSnapCircle = null; }
                 if (_moveSnapHighlight) { _moveSnapHighlight.setMap(null); _moveSnapHighlight = null; }
                 if (!_isCoaxMoving) return;
                 var nearPole = findNearestPoleR(lat, lng, _moveSnapR);
-                _moveSnapCircle = new kakao.maps.Circle({
-                    map: map._m, center: new kakao.maps.LatLng(lat, lng), radius: _moveSnapR,
+                _moveSnapCircle = new naver.maps.Circle({
+                    map: map._m, center: new naver.maps.LatLng(lat, lng), radius: _moveSnapR,
                     strokeWeight: 1, strokeColor: nearPole ? '#00cc44' : '#aaaaaa', strokeOpacity: 0.8,
                     fillColor: nearPole ? '#00cc44' : '#cccccc', fillOpacity: 0.15
                 });
                 if (nearPole) {
                     var _off = window._polePreviewOffset || { dLat: 0, dLng: 0 };
-                    _moveSnapHighlight = new kakao.maps.Circle({
+                    _moveSnapHighlight = new naver.maps.Circle({
                         map: map._m,
-                        center: new kakao.maps.LatLng(nearPole.lat + _off.dLat, nearPole.lng + _off.dLng),
+                        center: new naver.maps.LatLng(nearPole.lat + _off.dLat, nearPole.lng + _off.dLng),
                         radius: 3,
                         strokeWeight: 2, strokeColor: '#00cc44', strokeOpacity: 1,
                         fillColor: '#00cc44', fillOpacity: 0.5
@@ -1587,11 +1587,11 @@
             function _cleanupMoveSnap() {
                 if (_moveSnapCircle) { _moveSnapCircle.setMap(null); _moveSnapCircle = null; }
                 if (_moveSnapHighlight) { _moveSnapHighlight.setMap(null); _moveSnapHighlight = null; }
-                kakao.maps.event.removeListener(map._m, 'mousemove', _onMoveMousemove);
+                _nEvent.remove(map._m, 'mousemove', _onMoveMousemove);
             }
 
             if (_isCoaxMoving) {
-                kakao.maps.event.addListener(map._m, 'mousemove', _onMoveMousemove);
+                _nEvent.add(map._m, 'mousemove', _onMoveMousemove);
             }
 
             // 지도 클릭 이벤트 추가
@@ -2089,7 +2089,7 @@
 
             map.on('click', onTempDrawClick);
             _tempMousemoveHandler = onTempDrawMousemove;
-            kakao.maps.event.addListener(map._m, 'mousemove', _tempMousemoveHandler);
+            _nEvent.add(map._m, 'mousemove', _tempMousemoveHandler);
         }
 
         function endTempDrawMode() {
@@ -2103,7 +2103,7 @@
             if (_tempSnapHighlight) { _tempSnapHighlight.setMap(null); _tempSnapHighlight = null; }
             map.off('click', onTempDrawClick);
             if (_tempMousemoveHandler) {
-                kakao.maps.event.removeListener(map._m, 'mousemove', _tempMousemoveHandler);
+                _nEvent.remove(map._m, 'mousemove', _tempMousemoveHandler);
                 _tempMousemoveHandler = null;
             }
             if (window._setMapCursorMode) window._setMapCursorMode('default');
@@ -2136,19 +2136,19 @@
 
         function onTempDrawMousemove(me) {
             if (!_tempDrawMode) return;
-            var lat = me.latLng.getLat(), lng = me.latLng.getLng();
+            var lat = me.coord.lat(), lng = me.coord.lng();
             if (_tempSnapCircle) { _tempSnapCircle.setMap(null); _tempSnapCircle = null; }
             if (_tempSnapHighlight) { _tempSnapHighlight.setMap(null); _tempSnapHighlight = null; }
             var nearPole = findNearestPole(lat, lng);
-            _tempSnapCircle = new kakao.maps.Circle({
-                map: map._m, center: new kakao.maps.LatLng(lat, lng), radius: 10,
+            _tempSnapCircle = new naver.maps.Circle({
+                map: map._m, center: new naver.maps.LatLng(lat, lng), radius: 10,
                 strokeWeight: 1, strokeColor: nearPole ? '#00cc44' : '#aaa', strokeOpacity: 0.8,
                 fillColor: nearPole ? '#00cc44' : '#ccc', fillOpacity: 0.15
             });
             if (nearPole) {
                 var _off = window._polePreviewOffset || { dLat: 0, dLng: 0 };
-                _tempSnapHighlight = new kakao.maps.Circle({
-                    map: map._m, center: new kakao.maps.LatLng(nearPole.lat + _off.dLat, nearPole.lng + _off.dLng),
+                _tempSnapHighlight = new naver.maps.Circle({
+                    map: map._m, center: new naver.maps.LatLng(nearPole.lat + _off.dLat, nearPole.lng + _off.dLng),
                     radius: 3, strokeWeight: 2, strokeColor: '#00cc44', strokeOpacity: 1,
                     fillColor: '#00cc44', fillOpacity: 0.8
                 });
@@ -2395,7 +2395,7 @@
             map.off('click', onMapClickForWaypoint);
             map.on('click', onMapClickForWaypoint);
             window._mousemoveHandler = onMapMousemoveForSnap;
-            kakao.maps.event.addListener(map._m, 'mousemove', onMapMousemoveForSnap);
+            _nEvent.add(map._m, 'mousemove', onMapMousemoveForSnap);
 
             showStatus('케이블 그리기 재개 — 경유점 ' + pendingWaypoints.length + '개 (ESC=취소, Space=일시정지)');
         }
@@ -2649,6 +2649,10 @@
                 var resultDiv = document.getElementById('otdrResult');
 
                 if (candidates.length === 0) {
+                    if (allRoutes.length === 0) {
+                        resultDiv.innerHTML = '<div style="color:#e74c3c; font-size:12px; font-weight:bold;">탐색된 경로가 없습니다</div>';
+                        return;
+                    }
                     var maxRoute = allRoutes.reduce(function(a, b) {
                         var aLen = a.segments.length > 0 ? a.segments[a.segments.length-1].cumDist : 0;
                         var bLen = b.segments.length > 0 ? b.segments[b.segments.length-1].cumDist : 0;
@@ -2704,11 +2708,11 @@
                         // bindPopup은 클릭 시 열리므로, 자동 팝업은 직접 InfoWindow로 표시
                         setTimeout(function() {
                             if (_otdrMarker && _otdrMarker._mr) {
-                                var pos = new kakao.maps.LatLng(_otdrMarker._lat, _otdrMarker._lng);
-                                var iw = new kakao.maps.InfoWindow({
+                                var pos = new naver.maps.LatLng(_otdrMarker._lat, _otdrMarker._lng);
+                                var iw = new naver.maps.InfoWindow({
                                     position: pos,
                                     content: '<div style="padding:5px;min-width:120px;font-size:12px;text-align:center;"><b>OTDR ' + Math.round(dist) + 'm</b><br>' + fromName + ' ↔ ' + toName + '<br>' + fromName + '에서 ' + pt.distFromPrev + 'm</div>',
-                                    removable: true, zIndex: 99999
+                                    borderWidth: 1, zIndex: 99999
                                 });
                                 iw.open(_otdrMarker._mr._m);
                             }

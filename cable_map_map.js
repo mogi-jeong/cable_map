@@ -44,9 +44,9 @@
                 document.head.appendChild(s);
             })();
             try {
-                // 카카오맵 로드 확인
-                if (typeof kakao === "undefined" || !kakao.maps) {
-                    console.error('카카오맵이 로드되지 않았습니다.');
+                // 네이버맵 로드 확인
+                if (typeof naver === "undefined" || !naver.maps) {
+                    console.error('네이버맵이 로드되지 않았습니다.');
                     return;
                 }
                 
@@ -75,9 +75,9 @@
                             '#map { cursor: ' + cur + ' !important; }\n' +
                             '#map > div, #map > div > div { cursor: ' + cur + ' !important; }\n' +
                             '#map canvas { cursor: ' + cur + ' !important; }';
-                        // ② 카카오맵 최상위 내부 노드 inline 직접 override (상속 실패 대비)
-                        if (map && map._m) {
-                            var node = map._m.getNode();
+                        // ② 네이버맵 최상위 내부 노드 inline 직접 override (상속 실패 대비)
+                        if (map) {
+                            var node = map.getContainer();
                             if (node) {
                                 node.style.setProperty('cursor', cur, 'important');
                                 var c1 = node.firstElementChild;
@@ -139,17 +139,17 @@
                     }, 80);
                 }
                 function refreshPoles() {
-                    if (!map || !map._m) return;
+                    if (!map) return;
                     const z = map.getZoom();
-                    if (z < 14) { drawPoleCanvas(); return; }
-                    const b = map._m.getBounds();
-                    const sw = b.getSouthWest(), ne = b.getNorthEast();
-                    const dLat = (ne.getLat() - sw.getLat()) * 0.2;
-                    const dLng = (ne.getLng() - sw.getLng()) * 0.2;
+                    if (z < 15) { drawPoleCanvas(); return; }
+                    const b = map.getBounds();
+                    const sw = b.getSW(), ne = b.getNE();
+                    const dLat = (ne.lat() - sw.lat()) * 0.2;
+                    const dLng = (ne.lng() - sw.lng()) * 0.2;
                     const mySeq = ++_refreshSeq;
                     loadPolesInBounds({
-                        minLat: sw.getLat() - dLat, maxLat: ne.getLat() + dLat,
-                        minLng: sw.getLng() - dLng, maxLng: ne.getLng() + dLng
+                        minLat: sw.lat() - dLat, maxLat: ne.lat() + dLat,
+                        minLng: sw.lng() - dLng, maxLng: ne.lng() + dLng
                     }).then(function(result) {
                         if (mySeq !== _refreshSeq) return; // 더 최신 쿼리가 있으면 폐기
                         nodes = nodes.filter(function(n) { return !isPoleType(n.type); });
@@ -185,11 +185,11 @@
 
                 // moveend: 위치 저장 + pole 재로드 (디바운스)
                 map.on('moveend', function() {
-                    if (!map || !map._m) return;
-                    const c = map._m.getCenter();
+                    if (!map) return;
+                    const c = map.getCenter();
                     if (!c) return;
                     const z = map.getZoom();
-                    localStorage.setItem('mapView', JSON.stringify({lat:c.getLat(), lng:c.getLng(), zoom:z}));
+                    localStorage.setItem('mapView', JSON.stringify({lat:c.lat, lng:c.lng, zoom:z}));
                     map.closePopup();
                     var _nc = document.getElementById('nodeContextMenu');
                     if (_nc) _nc.remove();
@@ -393,9 +393,9 @@
                 });
 
                 // 지도 우클릭 → 빠른 추가 컨텍스트 메뉴
-                kakao.maps.event.addListener(map._m, 'rightclick', function(e) {
-                    const lat = e.latLng.getLat();
-                    const lng = e.latLng.getLng();
+                naver.maps.Event.addListener(map._m, 'rightclick', function(e) {
+                    const lat = e.coord.lat();
+                    const lng = e.coord.lng();
 
                     // 기존 컨텍스트 메뉴 제거
                     const existing = document.getElementById('mapContextMenu');
@@ -789,9 +789,9 @@
             ctx.clearRect(0, 0, w, h);
 
             var zoom = map.getZoom();
-            if (zoom < 14) return; // 카카오 레벨 5 이상(zoom<14)은 전주 숨김
+            if (zoom < 15) return; // zoom 15 미만 전주 숨김
 
-            var showLabel = zoom >= 15; // 레벨 3까지 라벨 표시
+            var showLabel = zoom >= 16; // zoom 16 이상 라벨 표시
 
             // 라벨 표시 기준: 케이블이 지나가거나 장비가 있는 전주만
             var labelPoleIds = null;
@@ -1013,7 +1013,7 @@
                 var mx = e.clientX - rect.left;
                 var my = e.clientY - rect.top;
                 var zoom = map.getZoom();
-                if (zoom < 14) {
+                if (zoom < 15) {
                     window._poleCanvas.style.cursor = '';
                     if (_tooltip) _tooltip.style.display = 'none';
                     _lastHoverId = null;
@@ -1081,17 +1081,17 @@
         function showJunctionRadius(poleNode) {
             _junctionPole = poleNode;
             if (_junctionCircle) _junctionCircle.setMap(null);
-            _junctionCircle = new kakao.maps.Circle({
-                center: new kakao.maps.LatLng(poleNode.lat, poleNode.lng),
+            _junctionCircle = new naver.maps.Circle({
+                center: new naver.maps.LatLng(poleNode.lat, poleNode.lng),
                 radius: 20,
                 strokeWeight: 2,
                 strokeColor: '#1a6fd4',
                 strokeOpacity: 0.9,
                 strokeStyle: 'dashed',
                 fillColor: '#1a6fd4',
-                fillOpacity: 0.08
+                fillOpacity: 0.08,
+                map: map._m
             });
-            _junctionCircle.setMap(map._m);
             drawPoleCanvas();
             var typeLabel = _equipTypeLabels[addingType] || '장비';
             showStatus('원 안에서 ' + typeLabel + ' 위치를 클릭하세요  (ESC: 취소)');
@@ -1647,9 +1647,7 @@
         function toggleSkyView() {
             _isSkyView = !_isSkyView;
             window._isSkyView = _isSkyView;
-            map._m.setMapTypeId(
-                _isSkyView ? kakao.maps.MapTypeId.HYBRID : kakao.maps.MapTypeId.ROADMAP
-            );
+            map.setMapType(_isSkyView ? 'skyview' : 'normal');
             const btn = document.getElementById('skyViewBtn');
             if (btn) {
                 btn.classList.toggle('active', _isSkyView);
@@ -1861,7 +1859,7 @@
 
             var mapEl = map.getContainer();
             if (window._setMapCursorMode) window._setMapCursorMode('crosshair');
-            map._m.setDraggable(false); // 지도 드래그 비활성화
+            map.setDraggable(false); // 지도 드래그 비활성화
 
             _poleSelectKeyHandler = function(e) {
                 if (e.key === 'Escape') cancelPoleSelect();
@@ -2022,7 +2020,7 @@
             if (btn) btn.classList.remove('active');
             var mapEl = map.getContainer();
             if (window._setMapCursorMode) window._setMapCursorMode('default');
-            map._m.setDraggable(true); // 지도 드래그 복원
+            map.setDraggable(true); // 지도 드래그 복원
             if (_poleSelectMouseDown) mapEl.removeEventListener('mousedown', _poleSelectMouseDown);
             if (_poleSelectMouseMove) mapEl.removeEventListener('mousemove', _poleSelectMouseMove);
             if (_poleSelectMouseUp)   mapEl.removeEventListener('mouseup',   _poleSelectMouseUp);
@@ -2051,7 +2049,7 @@
 
             // 패널 숨기기, 커서 변경, 지도 드래그 비활성화
             document.getElementById('poleSelectPanel').style.display = 'none';
-            map._m.setDraggable(false);
+            map.setDraggable(false);
             showStatus('지도를 클릭하면 전주가 이동됩니다  (ESC: 취소)');
 
             var mapEl = map.getContainer();
@@ -2113,7 +2111,7 @@
         }
 
         function _cleanupPoleMove(mapEl) {
-            map._m.setDraggable(true);
+            map.setDraggable(true);
             if (_poleMoveMouseMove) mapEl.removeEventListener('mousemove', _poleMoveMouseMove);
             if (_poleMoveClick)     mapEl.removeEventListener('click',     _poleMoveClick, true);
             if (_poleMoveKeyHandler) document.removeEventListener('keydown', _poleMoveKeyHandler);
@@ -2443,30 +2441,23 @@
         if (box) box.style.display = 'none';
     };
 
-    // 카카오 Places/Geocoder 주소 검색 (병렬 실행 후 병합)
+    // 네이버 Geocoder 주소 검색
     function searchAddress(query, cb) {
-        if (!kakao || !kakao.maps || !kakao.maps.services) { cb([]); return; }
-        var results = { keyword: null, address: null };
-        function tryMerge() {
-            if (results.keyword === null || results.address === null) return;
-            // 키워드 결과 우선, 주소 결과 보충 (중복 제거)
-            var merged = (results.keyword || []).slice();
-            var ids = {};
-            merged.forEach(function(r) { if (r.id) ids[r.id] = true; });
-            (results.address || []).forEach(function(r) {
-                if (!r.id || !ids[r.id]) merged.push(r);
+        if (!naver || !naver.maps || !naver.maps.Service) { cb([]); return; }
+        naver.maps.Service.geocode({query: query}, function(status, response) {
+            if (status !== naver.maps.Service.Status.OK) { cb([]); return; }
+            var items = response.v2.addresses || [];
+            // 카카오 결과 형식과 호환되도록 변환
+            var results = items.map(function(item) {
+                return {
+                    place_name: item.roadAddress || item.jibunAddress || query,
+                    address_name: item.jibunAddress || item.roadAddress || '',
+                    road_address_name: item.roadAddress || '',
+                    x: item.x,
+                    y: item.y
+                };
             });
-            cb(merged);
-        }
-        var ps = new kakao.maps.services.Places();
-        ps.keywordSearch(query, function(data, status) {
-            results.keyword = status === kakao.maps.services.Status.OK ? data : [];
-            tryMerge();
-        });
-        var gc = new kakao.maps.services.Geocoder();
-        gc.addressSearch(query, function(data2, status2) {
-            results.address = status2 === kakao.maps.services.Status.OK ? data2 : [];
-            tryMerge();
+            cb(results);
         });
     }
 
@@ -2525,8 +2516,8 @@
         if (type === 'pole') {
             var n = _lastPoleResults[idx];
             if (!n || !map) return;
-            map._m.setCenter(new kakao.maps.LatLng(n.lat, n.lng));
-            map._m.setLevel(2);
+            map.setCenter(n.lat, n.lng);
+            map.setLevel(2);
             if (typeof refreshPoles === 'function') refreshPoles();
             setTimeout(function() {
                 if (typeof drawPoleCanvas === 'function') {
@@ -2544,8 +2535,8 @@
             var lat = parseFloat(a.y || (a.address && a.address.y));
             var lng = parseFloat(a.x || (a.address && a.address.x));
             if (isNaN(lat) || isNaN(lng)) return;
-            map._m.setCenter(new kakao.maps.LatLng(lat, lng));
-            map._m.setLevel(3);
+            map.setCenter(lat, lng);
+            map.setLevel(3);
             if (typeof refreshPoles === 'function') refreshPoles();
         }
     };
