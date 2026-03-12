@@ -2443,19 +2443,30 @@
         if (box) box.style.display = 'none';
     };
 
-    // 카카오 Places/Geocoder 주소 검색
+    // 카카오 Places/Geocoder 주소 검색 (병렬 실행 후 병합)
     function searchAddress(query, cb) {
         if (!kakao || !kakao.maps || !kakao.maps.services) { cb([]); return; }
+        var results = { keyword: null, address: null };
+        function tryMerge() {
+            if (results.keyword === null || results.address === null) return;
+            // 키워드 결과 우선, 주소 결과 보충 (중복 제거)
+            var merged = (results.keyword || []).slice();
+            var ids = {};
+            merged.forEach(function(r) { if (r.id) ids[r.id] = true; });
+            (results.address || []).forEach(function(r) {
+                if (!r.id || !ids[r.id]) merged.push(r);
+            });
+            cb(merged);
+        }
         var ps = new kakao.maps.services.Places();
         ps.keywordSearch(query, function(data, status) {
-            if (status === kakao.maps.services.Status.OK) cb(data);
-            else {
-                // Places 실패 → Geocoder fallback
-                var gc = new kakao.maps.services.Geocoder();
-                gc.addressSearch(query, function(data2, status2) {
-                    cb(status2 === kakao.maps.services.Status.OK ? data2 : []);
-                });
-            }
+            results.keyword = status === kakao.maps.services.Status.OK ? data : [];
+            tryMerge();
+        });
+        var gc = new kakao.maps.services.Geocoder();
+        gc.addressSearch(query, function(data2, status2) {
+            results.address = status2 === kakao.maps.services.Status.OK ? data2 : [];
+            tryMerge();
         });
     }
 
