@@ -1654,7 +1654,9 @@
             const btn = document.getElementById('skyViewBtn');
             if (btn) {
                 btn.classList.toggle('active', _isSkyView);
-                btn.querySelector('.tb-label').textContent = _isSkyView ? '지도뷰' : '스카이뷰';
+                // tb-top-btn 구조: SVG + 텍스트노드
+                var textNodes = Array.from(btn.childNodes).filter(function(n){return n.nodeType===3;});
+                if (textNodes.length) textNodes[textNodes.length-1].textContent = _isSkyView ? ' 지도뷰' : ' 스카이뷰';
             }
             drawPoleCanvas();
         }
@@ -2543,4 +2545,441 @@
             if (typeof refreshPoles === 'function') refreshPoles();
         }
     };
+
+    // ===== 탭 전환 (토글) =====
+    var _activeTab = null;
+    window.switchTab = function(tabName) {
+        var sub = document.getElementById('toolbarSub');
+        var mapEl = document.getElementById('map');
+
+        // 같은 탭 클릭 → 닫기
+        if (_activeTab === tabName) {
+            _activeTab = null;
+            document.querySelectorAll('.tab-btn').forEach(function(b){ b.classList.remove('active'); });
+            document.querySelectorAll('.tab-panel').forEach(function(p){ p.classList.remove('active'); });
+            if (sub) sub.classList.remove('open');
+            if (mapEl) mapEl.style.paddingTop = '42px';
+            if (map && map._m) map._m.autoResize();
+            return;
+        }
+
+        // 다른 탭 열기
+        _activeTab = tabName;
+        document.querySelectorAll('.tab-btn').forEach(function(btn) {
+            btn.classList.toggle('active', btn.getAttribute('data-tab') === tabName);
+        });
+        document.querySelectorAll('.tab-panel').forEach(function(panel) {
+            panel.classList.toggle('active', panel.getAttribute('data-tab') === tabName);
+        });
+        if (sub) sub.classList.add('open');
+        if (mapEl) mapEl.style.paddingTop = '86px';
+        if (map && map._m) setTimeout(function(){ map._m.autoResize(); }, 160);
+    };
+
+    // ===== 로드뷰 (네이버 Panorama) =====
+    var _rvPicking = false;   // 클릭 대기 모드
+    var _rvClickListener = null;
+    var _panorama = null;
+    var _streetLayer = null;  // 로드뷰 가능 도로 하이라이트
+
+    // 1) 로드뷰 버튼 → 클릭 대기 모드 진입/해제
+    window.toggleRoadView = function() {
+        if (_rvPicking) {
+            _cancelRvPicking();
+            return;
+        }
+        _rvPicking = true;
+        document.body.classList.add('roadview-picking');
+        var guide = document.getElementById('rvGuide');
+        if (guide) guide.classList.add('active');
+        var btn = document.getElementById('roadViewBtn');
+        if (btn) btn.classList.add('active');
+
+        // 로드뷰 가능 도로 파란색 하이라이트 표시
+        if (!_streetLayer) {
+            _streetLayer = new naver.maps.StreetLayer();
+        }
+        _streetLayer.setMap(map._m);
+
+        // 지도 클릭 리스너
+        _rvClickListener = naver.maps.Event.addListener(map._m, 'click', function(e) {
+            _cancelRvPicking();
+            _openRoadView(e.coord.lat(), e.coord.lng());
+        });
+    };
+
+    function _cancelRvPicking() {
+        _rvPicking = false;
+        document.body.classList.remove('roadview-picking');
+        var guide = document.getElementById('rvGuide');
+        if (guide) guide.classList.remove('active');
+        var btn = document.getElementById('roadViewBtn');
+        if (btn) btn.classList.remove('active');
+        // 도로 하이라이트 제거
+        if (_streetLayer) _streetLayer.setMap(null);
+        if (_rvClickListener) {
+            naver.maps.Event.removeListener(_rvClickListener);
+            _rvClickListener = null;
+        }
+    }
+
+    // 2) 전체화면 파노라마 열기
+    function _openRoadView(lat, lng) {
+        var panel = document.getElementById('roadviewPanel');
+        var container = document.getElementById('roadviewContainer');
+        var noData = document.getElementById('roadviewNoData');
+        if (!panel) return;
+
+        panel.classList.add('active');
+        noData.style.display = 'none';
+        container.style.display = 'block';
+
+        var pos = new naver.maps.LatLng(lat, lng);
+
+        // 조절 패널 표시
+        var adjPanel = document.getElementById('rvAdjustPanel');
+        if (adjPanel) adjPanel.classList.add('active');
+
+        if (!_panorama) {
+            _panorama = new naver.maps.Panorama('roadviewContainer', {
+                position: pos,
+                pov: { pan: 0, tilt: 0, fov: 100 }
+            });
+            naver.maps.Event.addListener(_panorama, 'status_changed', function(status) {
+                if (status !== naver.maps.PanoramaStatus.OK) {
+                    noData.style.display = '';
+                    container.style.display = 'none';
+                } else {
+                    noData.style.display = 'none';
+                    container.style.display = 'block';
+                    _updatePoleOverlays();
+                }
+            });
+            // POV 변경 시 오버레이 갱신
+            naver.maps.Event.addListener(_panorama, 'pov_changed', _updatePoleOverlays);
+            naver.maps.Event.addListener(_panorama, 'position_changed', _updatePoleOverlays);
+        } else {
+            _panorama.setPosition(pos);
+            _updateRvPoleSelect();
+        }
+    }
+
+    // 3) 로드뷰 닫기 (X 버튼)
+    window.closeRoadView = function() {
+        var panel = document.getElementById('roadviewPanel');
+        if (panel) panel.classList.remove('active');
+        // 조절 패널 숨김
+        var adjPanel = document.getElementById('rvAdjustPanel');
+        if (adjPanel) adjPanel.classList.remove('active');
+        // 진행 중인 조절 취소
+        _stopRvPoleAdjust(false);
+        // 오버레이 제거
+        var overlay = document.getElementById('rvPoleOverlay');
+        if (overlay) overlay.innerHTML = '';
+    };
+
+    // ===== 전주 데이터 파노라마 오버레이 =====
+    function _updatePoleOverlays() {
+        if (!_panorama) return;
+        var overlay = document.getElementById('rvPoleOverlay');
+        if (!overlay) return;
+        overlay.innerHTML = '';
+
+        // select 목록도 함께 갱신
+        try { _updateRvPoleSelect(); } catch(e) { console.error('[RV] select err:', e); }
+
+        var panoPos = _panorama.getPosition();
+        var pov = _panorama.getPov();
+        var panoLat = panoPos.lat(), panoLng = panoPos.lng();
+        var viewW = overlay.offsetWidth, viewH = overlay.offsetHeight;
+        if (!viewW || !viewH) return;
+
+        var fov = pov.fov || 100;
+        var panDeg = pov.pan || 0;
+        var tiltDeg = pov.tilt || 0;
+
+        // 반경 100m 이내 전주 찾기
+        var maxDist = 100;
+        for (var i = 0; i < nodes.length; i++) {
+            var node = nodes[i];
+            if (!node.type || node.type.indexOf('pole') === -1) continue;
+
+            // 거리 계산 (미터) — 위치보정 오프셋 반영
+            var off = window._polePreviewOffset || { dLat: 0, dLng: 0 };
+            var dLat = (node.lat + off.dLat - panoLat) * 111320;
+            var dLng = (node.lng + off.dLng - panoLng) * 111320 * Math.cos(panoLat * Math.PI / 180);
+            var dist = Math.sqrt(dLat * dLat + dLng * dLng);
+            if (dist > maxDist || dist < 2) continue;
+
+            // 방위각 (북=0, 동=90)
+            var bearing = Math.atan2(dLng, dLat) * 180 / Math.PI;
+            bearing = ((bearing % 360) + 360) % 360;
+
+            // 현재 보는 방향 대비 상대 각도
+            var relAngle = bearing - panDeg;
+            if (relAngle > 180) relAngle -= 360;
+            if (relAngle < -180) relAngle += 360;
+
+            // FOV 밖이면 건너뛰기 (여유 10도)
+            if (Math.abs(relAngle) > fov / 2 + 10) continue;
+
+            // 화면 X 좌표
+            var screenX = (relAngle / fov) * viewW + viewW / 2;
+
+            // 화면 Y 좌표 — 가까울수록 전주 높이를 낮춰서 라벨을 아래로 내림
+            // 먼 전주(100m+)는 전주 꼭대기(8m), 가까운 전주(~2m)는 눈높이(1.5m)
+            var poleHeight = dist < 10 ? 1.5 : dist < 30 ? 1.5 + (dist - 10) / 20 * 3.5 : dist < 80 ? 5 + (dist - 30) / 50 * 3 : 8;
+            var elevAngle = Math.atan2(poleHeight, dist) * 180 / Math.PI;
+            var screenY = viewH / 2 - ((elevAngle - tiltDeg) / (fov * 0.6)) * viewH;
+
+            // 화면 범위 체크
+            if (screenX < -60 || screenX > viewW + 60) continue;
+            if (screenY > viewH + 40) continue;
+
+            // 상단 밖으로 나간 라벨은 상단에 고정
+            var clamped = false;
+            if (screenY < 10) {
+                screenY = 10;
+                clamped = true;
+            }
+
+            // 라벨 텍스트 구성
+            var poleNum = node.memo ? node.memo.replace('전산화번호: ','').replace(/자가주:true/g,'').trim() : '';
+            var poleName = node.name || '';
+            if (!poleNum && !poleName) continue;
+
+            // 경간거리 (이 전주와 연결된 가장 가까운 연결에서)
+            var spanText = '';
+            if (typeof connections !== 'undefined') {
+                for (var c = 0; c < connections.length; c++) {
+                    var conn = connections[c];
+                    if (conn.from === node.id || conn.to === node.id) {
+                        var other = conn.from === node.id ? conn.to : conn.from;
+                        var otherNode = nodes.find(function(n){ return n.id === other; });
+                        if (otherNode) {
+                            var oLat = (otherNode.lat - node.lat) * 111320;
+                            var oLng = (otherNode.lng - node.lng) * 111320 * Math.cos(node.lat * Math.PI / 180);
+                            var spanDist = Math.sqrt(oLat*oLat + oLng*oLng);
+                            if (conn.spanDistances && conn.spanDistances[0]) {
+                                spanText = conn.spanDistances[0] + 'm';
+                            } else {
+                                spanText = spanDist.toFixed(1) + 'm';
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // 거리에 따른 투명도 (가까울수록 진하게)
+            var opacity = dist < 50 ? 1 : dist < 100 ? 0.85 : 0.65;
+            var scale = dist < 50 ? 1 : dist < 100 ? 0.9 : 0.75;
+
+            // DOM 라벨 생성
+            var label = document.createElement('div');
+            label.className = 'rv-pole-label';
+            label.style.left = screenX + 'px';
+            label.style.top = screenY + 'px';
+            label.style.opacity = opacity;
+            label.style.transform = clamped ? 'translate(-50%,0) scale(' + scale + ')' : 'translate(-50%,-100%) scale(' + scale + ')';
+            label.style.pointerEvents = 'auto';
+            label.style.cursor = 'pointer';
+            label.setAttribute('data-node-id', node.id);
+            if (clamped) {
+                label.style.borderTop = '3px solid #ff6';
+            }
+
+            var line1 = poleNum || '';
+            var line2 = poleName;
+            var line3 = spanText;
+            var line4 = dist.toFixed(1) + 'm';
+
+            label.innerHTML =
+                (clamped ? '<div style="text-align:center;color:#ff6;font-size:10px;line-height:1;">▲ 위</div>' : '') +
+                (line1 ? '<div class="rv-pole-num">' + line1 + '</div>' : '') +
+                (line2 ? '<div class="rv-pole-name">' + line2 + '</div>' : '') +
+                (line3 ? '<div class="rv-pole-span">' + line3 + '</div>' : '') +
+                '<div class="rv-pole-dist">' + line4 + '</div>';
+
+            overlay.appendChild(label);
+        }
+    }
+
+    // ===== 주변 전주 select 목록 업데이트 =====
+    function _updateRvPoleSelect() {
+        var sel = document.getElementById('rvaSelect');
+        if (!sel || !_panorama) return;
+        var panoPos = _panorama.getPosition();
+        if (!panoPos) return;
+        var pLat = panoPos.lat(), pLng = panoPos.lng();
+        var off = window._polePreviewOffset || { dLat: 0, dLng: 0 };
+
+        // 현재 선택된 값 기억
+        var curVal = sel.value;
+        sel.innerHTML = '<option value="">-- 전주 선택 --</option>';
+
+        var list = [];
+        var allNodes = (typeof nodes !== 'undefined') ? nodes : [];
+        for (var i = 0; i < allNodes.length; i++) {
+            var n = allNodes[i];
+            if (!n.type || n.type.indexOf('pole') === -1) continue;
+            var dLat = (n.lat + off.dLat - pLat) * 111320;
+            var dLng = (n.lng + off.dLng - pLng) * 111320 * Math.cos(pLat * Math.PI / 180);
+            var dist = Math.sqrt(dLat * dLat + dLng * dLng);
+            if (dist > 100 || dist < 2) continue;
+            var poleNum = n.memo ? n.memo.replace('전산화번호: ','').replace(/자가주:true/g,'').trim() : '';
+            var label = (poleNum ? poleNum + ' / ' : '') + (n.name || '전주');
+            list.push({ id: n.id, label: label, dist: dist });
+        }
+        list.sort(function(a, b) { return a.dist - b.dist; });
+
+        for (var j = 0; j < list.length; j++) {
+            var opt = document.createElement('option');
+            opt.value = list[j].id;
+            opt.textContent = list[j].label + ' (' + list[j].dist.toFixed(0) + 'm)';
+            sel.appendChild(opt);
+        }
+        // 이전 선택 복원
+        if (curVal) sel.value = curVal;
+    }
+
+    // ===== 로드뷰 전주 위치 미세 조절 =====
+    var _rvAdjustNode = null;
+    var _rvAdjustKeyHandler = null;
+
+    // select에서 전주 선택
+    window.rvAdjustSelectPole = function(nodeId) {
+        if (!nodeId) {
+            _stopRvPoleAdjust(false);
+            return;
+        }
+        var node = nodes.find(function(n) { return n.id === nodeId; });
+        if (!node) return;
+        _startRvPoleAdjust(node);
+    };
+
+    function _startRvPoleAdjust(node) {
+        if (_rvAdjustKeyHandler) {
+            document.removeEventListener('keydown', _rvAdjustKeyHandler);
+        }
+        _rvAdjustNode = node;
+
+        // 이름 표시
+        var nameEl = document.getElementById('rvaName');
+        var poleNum = node.memo ? node.memo.replace('전산화번호: ','').replace(/자가주:true/g,'').trim() : '';
+        if (nameEl) nameEl.textContent = (poleNum ? poleNum + ' / ' : '') + (node.name || '전주');
+
+        // 해당 라벨 하이라이트
+        document.querySelectorAll('.rv-pole-label').forEach(function(el) {
+            el.classList.toggle('adjusting', el.getAttribute('data-node-id') === node.id);
+        });
+
+        // 방향키 리스너
+        var step = 0.0000027; // ~0.3m
+        _rvAdjustKeyHandler = function(e) {
+            if (!_rvAdjustNode) return;
+            // 조절 패널의 select에 포커스 있을 때는 무시
+            if (e.target.tagName === 'SELECT') return;
+
+            var moved = false;
+            var s = e.shiftKey ? step * 0.1 : step;
+            if (e.key === 'ArrowUp')    { e.preventDefault(); _rvAdjustNode.lat += s; moved = true; }
+            if (e.key === 'ArrowDown')  { e.preventDefault(); _rvAdjustNode.lat -= s; moved = true; }
+            if (e.key === 'ArrowLeft')  { e.preventDefault(); _rvAdjustNode.lng -= s; moved = true; }
+            if (e.key === 'ArrowRight') { e.preventDefault(); _rvAdjustNode.lng += s; moved = true; }
+            if (e.key === 'Enter') { e.preventDefault(); _stopRvPoleAdjust(true); return; }
+            if (moved) _updatePoleOverlays();
+        };
+        document.addEventListener('keydown', _rvAdjustKeyHandler);
+    }
+
+    // D-pad 버튼 클릭
+    window.rvAdjustMove = function(dir) {
+        if (!_rvAdjustNode) return;
+        var step = 0.0000027;
+        if (dir === 'up')    _rvAdjustNode.lat += step;
+        if (dir === 'down')  _rvAdjustNode.lat -= step;
+        if (dir === 'left')  _rvAdjustNode.lng -= step;
+        if (dir === 'right') _rvAdjustNode.lng += step;
+        _updatePoleOverlays();
+    };
+
+    function _stopRvPoleAdjust(save) {
+        if (save && _rvAdjustNode) {
+            if (typeof saveData === 'function') saveData();
+            if (typeof drawPoleCanvas === 'function') drawPoleCanvas();
+            if (typeof showStatus === 'function') showStatus('전주 위치 저장 완료');
+        }
+        _rvAdjustNode = null;
+        if (_rvAdjustKeyHandler) {
+            document.removeEventListener('keydown', _rvAdjustKeyHandler);
+            _rvAdjustKeyHandler = null;
+        }
+        document.querySelectorAll('.rv-pole-label.adjusting').forEach(function(el) {
+            el.classList.remove('adjusting');
+        });
+        var sel = document.getElementById('rvaSelect');
+        if (sel) sel.value = '';
+        _updatePoleOverlays();
+    }
+    window.rvAdjustConfirm = function() { _stopRvPoleAdjust(true); };
+    window.rvAdjustCancel = function() { _stopRvPoleAdjust(false); };
+
+    // 4) WASD 키보드 이동
+    // W: 보는 방향으로 전진, S: 후진, A: 좌회전, D: 우회전
+    var _rvMoving = false; // 중복 이동 방지
+    function _rvMove(angleDeg) {
+        if (!_panorama || _rvMoving) return;
+        _rvMoving = true;
+
+        var pos = _panorama.getPosition();
+        var pov = _panorama.getPov();
+        // pan(도) + 보정각도 → 라디안
+        var bearing = ((pov.pan + angleDeg) % 360 + 360) % 360;
+        var rad = bearing * Math.PI / 180;
+        // 현재 위치에서 ~20m 이동한 좌표 계산
+        var dist = 0.00018; // 약 20m (위도 기준)
+        var newLat = pos.lat() + dist * Math.cos(rad);
+        var newLng = pos.lng() + dist * Math.sin(rad) / Math.cos(pos.lat() * Math.PI / 180);
+
+        _panorama.setPosition(new naver.maps.LatLng(newLat, newLng));
+        // 이동 후 오버레이 강제 갱신 + 연속 키 입력 방지
+        setTimeout(function(){
+            _updatePoleOverlays();
+            _rvMoving = false;
+        }, 100);
+    }
+
+    // ESC / WASD 키 처리
+    document.addEventListener('keydown', function(e) {
+        // ESC: 클릭 대기 / 로드뷰 닫기
+        if (e.key === 'Escape') {
+            if (_rvPicking) { _cancelRvPicking(); return; }
+            var panel = document.getElementById('roadviewPanel');
+            if (panel && panel.classList.contains('active')) {
+                window.closeRoadView();
+            }
+            return;
+        }
+
+        // WASD: 로드뷰 열려있을 때만
+        var panel = document.getElementById('roadviewPanel');
+        if (!panel || !panel.classList.contains('active') || !_panorama) return;
+        // 입력 중이면 무시
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+        var key = e.key.toLowerCase();
+        if (key === 'w') { e.preventDefault(); _rvMove(0); }        // 전진
+        else if (key === 's') { e.preventDefault(); _rvMove(180); } // 후진
+        else if (key === 'a') {                                            // 좌회전
+            e.preventDefault();
+            var pov = _panorama.getPov();
+            _panorama.setPov({ pan: pov.pan - 15, tilt: pov.tilt, fov: pov.fov });
+        }
+        else if (key === 'd') {                                            // 우회전
+            e.preventDefault();
+            var pov = _panorama.getPov();
+            _panorama.setPov({ pan: pov.pan + 15, tilt: pov.tilt, fov: pov.fov });
+        }
+    });
 })();
