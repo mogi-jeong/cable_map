@@ -1138,7 +1138,10 @@
             } else {
                 cableColor = isNewCable ? '#ff0000' : '#0055ff';
             }
-            const polylineOpts = { color: cableColor, weight: isCoaxLine ? 2 : 3, opacity: 0.8 };
+            var _cw = (typeof getStyle === 'function' ? getStyle('coaxWeight') : 2);
+            var _ow = (typeof getStyle === 'function' ? getStyle('opticalWeight') : 3);
+            var _co = (typeof getStyle === 'function' ? getStyle('cableOpacity') : 0.8);
+            const polylineOpts = { color: cableColor, weight: isCoaxLine ? _cw : _ow, opacity: _co };
             if (isNewCable && !isCoaxLine) polylineOpts.dashArray = '10,6';
             const polyline = L.polyline(path, polylineOpts).addTo(map);
             
@@ -1215,7 +1218,7 @@
             }
             polyline.on('click', _onCableClick);
 
-            polylines.push({ line: polyline, label: label, connId: connection.id });
+            polylines.push({ line: polyline, label: label, connId: connection.id, isCoax: !!isCoaxLine });
 
             // 경간(구간별 거리) 라벨 표시 — 경유점이 있을 때만
             if (path.length > 2) {
@@ -1241,7 +1244,8 @@
                     // 글씨가 뒤집히지 않게 -90~90 범위로 보정
                     if (angleDeg > 90) angleDeg -= 180;
                     if (angleDeg < -90) angleDeg += 180;
-                    var spanStyle = 'color:' + cableColor + ';transform:rotate(' + angleDeg.toFixed(1) + 'deg) translateY(8px);transform-origin:center center;cursor:pointer;'
+                    var _sls = (typeof getStyle === 'function' ? getStyle('spanLabelSize') : 10);
+                    var spanStyle = 'color:' + cableColor + ';font-size:' + _sls + 'px;transform:rotate(' + angleDeg.toFixed(1) + 'deg) translateY(8px);transform-origin:center center;cursor:pointer;'
                         + (isCustom ? 'font-weight:bold;' : '');
                     var spanIcon = L.divIcon({
                         html: '<div class="span-label" style="' + spanStyle + '" data-conn-id="' + connection.id + '" data-seg-idx="' + si + '" data-auto="' + autoM + '">' + spanM + 'm</div>',

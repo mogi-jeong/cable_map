@@ -933,6 +933,78 @@
         .a-btn-ghost   { background: #f0f1f3; color: #555; }
         .a-btn-purple  { background: #9b59b6; color: #fff; }
         .a-btn-orange  { background: #e67e22; color: #fff; }
+        /* 스타일 설정 플로팅 패널 */
+        .style-panel {
+            display: none; position: fixed;
+            right: 16px; top: 100px; z-index: 1500;
+            width: 300px; background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.08);
+            border: 1px solid rgba(0,0,0,0.08);
+            font-family: 'Malgun Gothic', sans-serif;
+            transition: opacity 0.15s, transform 0.15s;
+        }
+        .style-panel.active { display: block; }
+        .style-panel-header {
+            display: flex; align-items: center; gap: 8px;
+            padding: 12px 14px; cursor: move;
+            background: linear-gradient(135deg, #f8f4fc 0%, #fff 100%);
+            border-bottom: 1.5px solid #f0e6f6;
+            border-radius: 12px 12px 0 0;
+            user-select: none;
+        }
+        .style-panel-header span {
+            flex: 1; font-size: 13px; font-weight: 800; color: #7c3aed;
+        }
+        .style-panel-close {
+            background: none; border: none; font-size: 18px;
+            color: #999; cursor: pointer; padding: 0 4px;
+            line-height: 1;
+        }
+        .style-panel-close:hover { color: #e74c3c; }
+        .style-panel-body {
+            padding: 12px 14px; max-height: 50vh; overflow-y: auto;
+        }
+        .style-panel-footer {
+            display: flex; gap: 8px; padding: 10px 14px;
+            border-top: 1.5px solid #f0e6f6;
+        }
+        .style-panel-btn {
+            flex: 1; padding: 8px 12px; border: none; border-radius: 8px;
+            font-size: 12px; font-weight: 700; cursor: pointer;
+            transition: opacity 0.15s;
+        }
+        .style-panel-btn:hover { opacity: 0.85; }
+        .style-btn-reset { background: #f0f1f3; color: #666; }
+        .style-btn-apply { background: #9b59b6; color: #fff; }
+        .style-section { margin-bottom: 14px; }
+        .style-section:last-child { margin-bottom: 0; }
+        .style-section-title {
+            font-size: 11px; font-weight: 800; color: #9b59b6;
+            letter-spacing: 0.5px; margin-bottom: 8px;
+            padding-bottom: 5px; border-bottom: 2px solid #f0e6f6;
+        }
+        .style-row {
+            display: flex; align-items: center; gap: 8px;
+            margin-bottom: 6px; padding: 2px 0;
+        }
+        .style-row label {
+            flex: 0 0 90px; font-size: 11px; font-weight: 600; color: #444;
+        }
+        .style-row input[type="range"] {
+            flex: 1; height: 5px; -webkit-appearance: none; appearance: none;
+            background: #e8e8e8; border-radius: 3px; outline: none;
+        }
+        .style-row input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none; width: 14px; height: 14px;
+            background: #9b59b6; border-radius: 50%; cursor: pointer;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+        }
+        .style-row .style-val {
+            flex: 0 0 32px; text-align: center; font-size: 11px;
+            font-weight: 700; color: #9b59b6; background: #f8f4fc;
+            border-radius: 5px; padding: 2px 0;
+        }
         /* 연결 카드 */
         .a-conn-card {
             background: #fff;
@@ -1389,6 +1461,18 @@
             </button>
             <input type="file" id="importFile" style="display:none;" accept=".json" onchange="importData(event)">
             <div class="toolbar-divider"></div>
+            <button class="tb-btn" onclick="openStyleModal()" data-tip="케이블/전주/라벨 스타일 설정">
+                <svg width="22" height="22" viewBox="0 0 40 40">
+                    <circle cx="12" cy="14" r="4" fill="none" stroke="#9b59b6" stroke-width="2"/>
+                    <line x1="12" y1="6" x2="12" y2="10" stroke="#9b59b6" stroke-width="2" stroke-linecap="round"/>
+                    <line x1="12" y1="18" x2="12" y2="34" stroke="#9b59b6" stroke-width="2" stroke-linecap="round"/>
+                    <circle cx="28" cy="26" r="4" fill="none" stroke="#9b59b6" stroke-width="2"/>
+                    <line x1="28" y1="6" x2="28" y2="22" stroke="#9b59b6" stroke-width="2" stroke-linecap="round"/>
+                    <line x1="28" y1="30" x2="28" y2="34" stroke="#9b59b6" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+                <span class="tb-label" style="color:#9b59b6;">스타일</span>
+            </button>
+            <div class="toolbar-divider"></div>
             <button class="tb-btn" onclick="resetAllData()" data-tip="전체 데이터 초기화">
                 <svg width="22" height="22" viewBox="0 0 40 40">
                     <path d="M20,8 A12,12 0 1,1 8,20" fill="none" stroke="#e74c3c" stroke-width="2.8" stroke-linecap="round"/>
@@ -1440,6 +1524,75 @@
         </div>
     </div>
     
+    <!-- 스타일 설정 플로팅 패널 -->
+    <div class="style-panel" id="stylePanel">
+        <div class="style-panel-header" id="stylePanelHeader">
+            <svg width="16" height="16" viewBox="0 0 40 40" fill="none">
+                <circle cx="12" cy="14" r="4" fill="none" stroke="#9b59b6" stroke-width="2.5"/>
+                <line x1="12" y1="6" x2="12" y2="10" stroke="#9b59b6" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="12" y1="18" x2="12" y2="34" stroke="#9b59b6" stroke-width="2.5" stroke-linecap="round"/>
+                <circle cx="28" cy="26" r="4" fill="none" stroke="#9b59b6" stroke-width="2.5"/>
+                <line x1="28" y1="6" x2="28" y2="22" stroke="#9b59b6" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="28" y1="30" x2="28" y2="34" stroke="#9b59b6" stroke-width="2.5" stroke-linecap="round"/>
+            </svg>
+            <span>스타일 설정</span>
+            <button class="style-panel-close" onclick="closeStyleModal()" title="닫기">&times;</button>
+        </div>
+        <div class="style-panel-body">
+            <div class="style-section">
+                <div class="style-section-title">케이블</div>
+                <div class="style-row">
+                    <label>광케이블 굵기</label>
+                    <input type="range" min="1" max="8" step="0.5" data-style="opticalWeight" oninput="onStyleChange(this)">
+                    <span class="style-val" id="sv_opticalWeight"></span>
+                </div>
+                <div class="style-row">
+                    <label>동축 굵기</label>
+                    <input type="range" min="1" max="8" step="0.5" data-style="coaxWeight" oninput="onStyleChange(this)">
+                    <span class="style-val" id="sv_coaxWeight"></span>
+                </div>
+                <div class="style-row">
+                    <label>케이블 투명도</label>
+                    <input type="range" min="0.2" max="1" step="0.05" data-style="cableOpacity" oninput="onStyleChange(this)">
+                    <span class="style-val" id="sv_cableOpacity"></span>
+                </div>
+            </div>
+            <div class="style-section">
+                <div class="style-section-title">전주</div>
+                <div class="style-row">
+                    <label>전주 원 크기</label>
+                    <input type="range" min="2" max="10" step="0.5" data-style="poleRadius" oninput="onStyleChange(this)">
+                    <span class="style-val" id="sv_poleRadius"></span>
+                </div>
+                <div class="style-row">
+                    <label>전주명 글자</label>
+                    <input type="range" min="8" max="18" step="1" data-style="poleLabelSize" oninput="onStyleChange(this)">
+                    <span class="style-val" id="sv_poleLabelSize"></span>
+                </div>
+            </div>
+            <div class="style-section">
+                <div class="style-section-title">경간/라벨</div>
+                <div class="style-row">
+                    <label>경간 글자</label>
+                    <input type="range" min="7" max="16" step="1" data-style="spanLabelSize" oninput="onStyleChange(this)">
+                    <span class="style-val" id="sv_spanLabelSize"></span>
+                </div>
+            </div>
+            <div class="style-section">
+                <div class="style-section-title">장비</div>
+                <div class="style-row">
+                    <label>장비 아이콘</label>
+                    <input type="range" min="16" max="48" step="2" data-style="equipIconSize" oninput="onStyleChange(this)">
+                    <span class="style-val" id="sv_equipIconSize"></span>
+                </div>
+            </div>
+        </div>
+        <div class="style-panel-footer">
+            <button class="style-panel-btn style-btn-reset" onclick="resetStyleDefaults()">초기화</button>
+            <button class="style-panel-btn style-btn-apply" onclick="applyAndCloseStyle()">적용 &amp; 닫기</button>
+        </div>
+    </div>
+
     <!-- 메뉴 선택 모달 -->
     <div class="modal menu-modal" id="menuModal">
         <div class="modal-content">

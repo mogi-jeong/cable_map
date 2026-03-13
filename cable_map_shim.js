@@ -160,7 +160,8 @@
             return this;
         },
         on:function(ev,fn){if(ev.startsWith('touch'))return this;if(!this._ls[ev])this._ls[ev]=[];this._ls[ev].push(fn);return this;},
-        setMap:function(m){if(this._line)this._line.setMap(m?m._m:null);return this;}
+        setMap:function(m){if(this._line)this._line.setMap(m?m._m:null);return this;},
+        setOptions:function(opts){if(!this._line)return this;var o={};if(opts.strokeWeight!=null)o.strokeWeight=opts.strokeWeight;if(opts.strokeOpacity!=null)o.strokeOpacity=opts.strokeOpacity;if(opts.strokeColor)o.strokeColor=opts.strokeColor;this._line.setOptions(o);return this;}
     };
 
     // ── CMkr: 원형 마커 (CustomOverlay 기반) ──

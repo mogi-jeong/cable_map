@@ -746,7 +746,7 @@
             const icon = L.divIcon({
                 html: markerHTML,
                 className: 'custom-div-icon',
-                iconSize: [24, 36],
+                iconSize: [(typeof getStyle === 'function' ? getStyle('equipIconSize') : 24), (typeof getStyle === 'function' ? getStyle('equipIconSize') * 1.5 : 36)],
                 iconAnchor: [anchorX, anchorY]
             });
             
@@ -892,7 +892,8 @@
                 var isMoving = _poleMoveMode && isSelected;
 
                 // 원 그리기 (절반 크기)
-                var radius = isSearchHit ? 14 : 4;
+                var _pr = (typeof getStyle === 'function' ? getStyle('poleRadius') : 4);
+                var radius = isSearchHit ? 14 : _pr;
                 ctx.globalAlpha = isMoving ? 0.5 : 1.0;
                 ctx.beginPath();
                 ctx.arc(x, y, radius, 0, Math.PI * 2);
@@ -921,7 +922,8 @@
                     ctx.rotate(angle * Math.PI / 180);
                     ctx.translate(offset, 0);
 
-                    ctx.font = 'bold 11px "Malgun Gothic", sans-serif';
+                    var _pls = (typeof getStyle === 'function' ? getStyle('poleLabelSize') : 11);
+                    ctx.font = 'bold ' + _pls + 'px "Malgun Gothic", sans-serif';
                     ctx.textBaseline = 'middle';
                     var tw = ctx.measureText(label).width;
                     var th = 14;
@@ -2545,6 +2547,167 @@
             if (typeof refreshPoles === 'function') refreshPoles();
         }
     };
+
+    // ===== 스타일 설정 시스템 =====
+    var _STYLE_DEFAULTS = {
+        opticalWeight: 3,
+        coaxWeight: 2,
+        cableOpacity: 0.8,
+        poleRadius: 4,
+        poleLabelSize: 11,
+        spanLabelSize: 10,
+        equipIconSize: 24
+    };
+
+    // 현재 스타일 (localStorage에서 로드 또는 기본값)
+    var _styles = (function() {
+        try {
+            var saved = localStorage.getItem('cableMapStyles');
+            if (saved) {
+                var parsed = JSON.parse(saved);
+                // 기본값으로 빈 항목 채우기
+                var result = {};
+                for (var k in _STYLE_DEFAULTS) {
+                    result[k] = parsed[k] !== undefined ? parsed[k] : _STYLE_DEFAULTS[k];
+                }
+                return result;
+            }
+        } catch(e) {}
+        return JSON.parse(JSON.stringify(_STYLE_DEFAULTS));
+    })();
+
+    // 전역 접근용
+    window.getStyle = function(key) { return _styles[key]; };
+
+    function _saveStyles() {
+        try { localStorage.setItem('cableMapStyles', JSON.stringify(_styles)); } catch(e) {}
+    }
+
+    // 패널 열기 (토글)
+    window.openStyleModal = function() {
+        var panel = document.getElementById('stylePanel');
+        if (!panel) return;
+        if (panel.classList.contains('active')) {
+            panel.classList.remove('active');
+            return;
+        }
+        // 슬라이더에 현재값 반영
+        var sliders = panel.querySelectorAll('input[data-style]');
+        for (var i = 0; i < sliders.length; i++) {
+            var key = sliders[i].getAttribute('data-style');
+            sliders[i].value = _styles[key];
+            var valEl = document.getElementById('sv_' + key);
+            if (valEl) valEl.textContent = _styles[key];
+        }
+        panel.classList.add('active');
+    };
+
+    // 슬라이더 변경 → 실시간 반영 + 자동 저장
+    window.onStyleChange = function(el) {
+        var key = el.getAttribute('data-style');
+        var val = parseFloat(el.value);
+        _styles[key] = val;
+        var valEl = document.getElementById('sv_' + key);
+        if (valEl) valEl.textContent = val;
+        _saveStyles();
+        _applyStyles();
+    };
+
+    // 초기화
+    window.resetStyleDefaults = function() {
+        _styles = JSON.parse(JSON.stringify(_STYLE_DEFAULTS));
+        _saveStyles();
+        var panel = document.getElementById('stylePanel');
+        if (panel) {
+            var sliders = panel.querySelectorAll('input[data-style]');
+            for (var i = 0; i < sliders.length; i++) {
+                var key = sliders[i].getAttribute('data-style');
+                sliders[i].value = _styles[key];
+                var valEl = document.getElementById('sv_' + key);
+                if (valEl) valEl.textContent = _styles[key];
+            }
+        }
+        _applyStyles();
+        if (typeof showStatus === 'function') showStatus('스타일이 초기화되었습니다');
+    };
+
+    // 닫기
+    window.closeStyleModal = function() {
+        var panel = document.getElementById('stylePanel');
+        if (panel) panel.classList.remove('active');
+    };
+
+    // 적용 후 닫기
+    window.applyAndCloseStyle = function() {
+        _saveStyles();
+        _applyStyles();
+        closeStyleModal();
+        if (typeof showStatus === 'function') showStatus('스타일이 적용되었습니다');
+    };
+
+    // 드래그 이동
+    (function() {
+        var panel = null, header = null;
+        var dragging = false, offX = 0, offY = 0;
+        document.addEventListener('DOMContentLoaded', function() {
+            panel = document.getElementById('stylePanel');
+            header = document.getElementById('stylePanelHeader');
+            if (!header) return;
+            header.addEventListener('mousedown', function(e) {
+                if (e.target.closest('.style-panel-close')) return;
+                dragging = true;
+                var rect = panel.getBoundingClientRect();
+                offX = e.clientX - rect.left;
+                offY = e.clientY - rect.top;
+                e.preventDefault();
+            });
+            document.addEventListener('mousemove', function(e) {
+                if (!dragging) return;
+                panel.style.left = (e.clientX - offX) + 'px';
+                panel.style.top = (e.clientY - offY) + 'px';
+                panel.style.right = 'auto';
+            });
+            document.addEventListener('mouseup', function() { dragging = false; });
+        });
+    })();
+
+    // 스타일 적용 (화면 새로 그리기)
+    function _applyStyles() {
+        // 경간 라벨 CSS 동적 변경
+        var spanLabels = document.querySelectorAll('.span-label');
+        for (var i = 0; i < spanLabels.length; i++) {
+            spanLabels[i].style.fontSize = _styles.spanLabelSize + 'px';
+        }
+        // 전주 캔버스 다시 그리기
+        if (typeof drawPoleCanvas === 'function') drawPoleCanvas();
+        // 케이블 polyline 굵기/투명도 갱신
+        if (typeof polylines !== 'undefined') {
+            for (var j = 0; j < polylines.length; j++) {
+                var pl = polylines[j];
+                if (pl && pl.line && pl.line.setOptions) {
+                    pl.line.setOptions({
+                        strokeWeight: pl.isCoax ? _styles.coaxWeight : _styles.opticalWeight,
+                        strokeOpacity: _styles.cableOpacity
+                    });
+                }
+            }
+        }
+        // 장비 마커 크기 갱신
+        if (typeof markers !== 'undefined') {
+            var scale = _styles.equipIconSize / 24; // 기본 24px 대비 비율
+            for (var id in markers) {
+                var m = markers[id];
+                if (!m || !m._ov) continue;
+                var div = m._ov._div || m._ov._content;
+                if (!div) continue;
+                var cm = div.querySelector('.custom-marker');
+                if (cm) {
+                    cm.style.transform = 'scale(' + scale + ')';
+                    cm.style.transformOrigin = 'center center';
+                }
+            }
+        }
+    }
 
     // ===== 탭 전환 (토글) =====
     var _activeTab = null;
