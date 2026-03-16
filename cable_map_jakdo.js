@@ -87,6 +87,37 @@
             trunkLine:   '12C',   // 증폭기 ↔ 증폭기 간선
             feederLine:  '7C',    // 증폭기 → 탭오프 분배선
             dropLine:    '5C'     // 탭오프 → 가입자 인입선
+        },
+
+        // ── 케이블 종류별 손실 기준 (dB/100m, 20°C) ────────
+        // ※ 제조사 사양서 확인 후 입력 필요 (모델명 따라 다름)
+        cableLoss: {
+            '12C': { fHi: null, fLo: null },   // 고역/저역 손실
+            '7C':  { fHi: null, fLo: null },
+            '5C':  { fHi: null, fLo: null }
+        },
+
+        // ── 커넥터 손실 기준 (dB) ────────────────────────────
+        // ※ 제조사 사양서 확인 후 입력 필요
+        connectorLoss: {
+            entry:      { fHi: null, fLo: null },  // 기기접속 커넥터
+            splice:     { fHi: null, fLo: null },  // 케이블 접속커넥터
+            terminator: { fHi: null, fLo: null }
+        },
+
+        // ── 증폭기 구분 코드 (도면 심볼 선택 기준) ──────────
+        // TBA: Trunk & Bridger, TDA: Distributed Bridger, EA: Line Extender
+        ampType: {
+            'TBA': 'TB1-1F',
+            'TDA': 'DB2-2F',
+            'EA':  'LE1-1F'
+        },
+
+        // ── 탭오프 구분 코드 ─────────────────────────────────
+        tapType: {
+            STD: '범용 일반형',         // 일반 탭
+            CON: '레벨경사 조정형',     // 레벨 보정용
+            POW: '탭포트 급전형'        // AC 전원 통과형
         }
     };
 
