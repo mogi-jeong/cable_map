@@ -686,6 +686,20 @@
             return result;
         };
 
+        // ── 함체 자동 각도 적용 (saveData 없이, 연결 변경 시 호출) ──
+        function _autoRotateJunctions(nodeIds) {
+            if (!window.calcJunctionAutoAngle) return;
+            nodeIds.forEach(function(nid) {
+                var n = nodes.find(function(x) { return x.id === nid; });
+                if (!n || n.type !== 'junction') return;
+                n.junctionAngle = Math.round(window.calcJunctionAutoAngle(n));
+                var idx = nodes.findIndex(function(x) { return x.id === n.id; });
+                if (idx !== -1) nodes[idx] = n;
+                if (markers[n.id]) { markers[n.id].setMap(null); delete markers[n.id]; }
+                renderNode(n);
+            });
+        }
+
         // ── portConns 업데이트 헬퍼 ──
         function _updateJunctionPortConns(conn, remove) {
             var fromNode = nodes.find(function(n) { return n.id === connFrom(conn); });
@@ -1108,8 +1122,9 @@
 
             connections.push(connection);
 
-            // 함체 portConns 업데이트
+            // 함체 portConns + 자동 각도
             _updateJunctionPortConns(connection, false);
+            _autoRotateJunctions([connectingFromNode.id, connectingToNode.id]);
 
             saveData();
             renderAllConnections();
@@ -1238,8 +1253,9 @@
                         if (tnIdx !== -1) nodes[tnIdx] = tn;
 
                         connections.push(newConn);
-                        // 함체 portConns 업데이트
+                        // 함체 portConns + 자동 각도
                         _updateJunctionPortConns(newConn, false);
+                        _autoRotateJunctions([fn.id, tn.id]);
                         window._pendingFromPort = null;
                         window._pendingToPort = null;
                         saveData();
@@ -1310,8 +1326,9 @@
 
             connections.push(connection);
 
-            // 함체 portConns 업데이트
+            // 함체 portConns + 자동 각도
             _updateJunctionPortConns(connection, false);
+            _autoRotateJunctions([connectingFromNode.id, connectingToNode.id]);
 
             saveData();
             renderAllConnections();
@@ -1743,6 +1760,8 @@
             }
 
             connections = connections.filter(c => c.id !== connectionId);
+            // 삭제 후 남은 연결 기준으로 함체 각도 재계산
+            _autoRotateJunctions([fromNodeId, toNodeId]);
             saveData();
             renderAllConnections();
             showStatus('케이블이 삭제되었습니다');
