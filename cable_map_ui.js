@@ -422,7 +422,7 @@
             var JPORTS = window.JUNCTION_PORTS;
             if (!JPORTS) { callback && callback(null); return; }
 
-            var portConns = node.portConns || {};
+            var portConns = window._getJunctionPortConns ? window._getJunctionPortConns(node) : (node.portConns || {});
             var jAngle    = node.junctionAngle || 0;
             var isNew     = node.isNew;
             var fillColor   = isNew ? '#ffe8e8' : '#e8f0fe';
@@ -661,6 +661,31 @@
         }
         window.showJunctionPortSelect = showJunctionPortSelect;
 
+        // ── 함체 포트 점유 상태 계산 (portConns + 포트미지정 연결 모두 반영) ──
+        // cable_map_map.js에서도 사용
+        window._getJunctionPortConns = function(node) {
+            var result = {};
+            // 1. 저장된 portConns (실존 conn만)
+            if (node.portConns) {
+                Object.keys(node.portConns).forEach(function(pid) {
+                    var connId = node.portConns[pid];
+                    if (connections.some(function(c) { return c.id === connId; })) {
+                        result[pid] = connId;
+                    }
+                });
+            }
+            // 2. fromPort/toPort 미지정 연결도 OUT/IN 기본 포트 점유로 인식
+            connections.forEach(function(c) {
+                if (c.nodeA !== node.id && c.nodeB !== node.id) return;
+                var nA = nodes.find(function(n) { return n.id === c.nodeA; });
+                var dirA = (nA && nA.connDirections && nA.connDirections[c.id]) || 'out';
+                var isFrom = (dirA === 'out') ? (c.nodeA === node.id) : (c.nodeB === node.id);
+                if (isFrom && !c.fromPort && !result['OUT']) result['OUT'] = c.id;
+                if (!isFrom && !c.toPort  && !result['IN'])  result['IN']  = c.id;
+            });
+            return result;
+        };
+
         // ── portConns 업데이트 헬퍼 ──
         function _updateJunctionPortConns(conn, remove) {
             var fromNode = nodes.find(function(n) { return n.id === connFrom(conn); });
@@ -811,10 +836,8 @@
                         if (nearJunction.type === 'junction') {
                             // FROM 포트에 따라 기본 TO 포트 결정: OUT→IN, IN→OUT, null→IN
                             var expectedTo = (window._pendingFromPort === 'IN') ? 'OUT' : 'IN';
-                            var toPortConns = nearJunction.portConns || {};
-                            // 실존 conn 검증
-                            var isOccupied = !!(toPortConns[expectedTo] &&
-                                connections.some(function(c) { return c.id === toPortConns[expectedTo]; }));
+                            var toPortConns = window._getJunctionPortConns ? window._getJunctionPortConns(nearJunction) : (nearJunction.portConns || {});
+                            var isOccupied = !!toPortConns[expectedTo];
                             if (!isOccupied) {
                                 // 기본 포트 비어있음 → 자동 연결
                                 window._pendingToPort = expectedTo;
