@@ -43,6 +43,19 @@
                 ].join('\n');
                 document.head.appendChild(s);
             })();
+            // ── 함체 포트 정의 (SVG space, center=20,20, viewBox 0 0 40 40) ──
+            // 포트 정의: IN=왼쪽, OUT=오른쪽, BRL=위쪽3개, BRR=아래쪽3개 (90도 회전 기준)
+            window.JUNCTION_PORTS = {
+                IN:   { x: 2,  y: 20, svgX: -18, svgY:  0,  label: 'IN',  color: '#1a6fd4' },
+                OUT:  { x: 38, y: 20, svgX:  18, svgY:  0,  label: 'OUT', color: '#e53935' },
+                BRL1: { x: 13, y: 2,  svgX: -7,  svgY: -18, label: 'BR',  color: '#2e7d32' },
+                BRL2: { x: 20, y: 2,  svgX:  0,  svgY: -18, label: 'BR',  color: '#2e7d32' },
+                BRL3: { x: 27, y: 2,  svgX:  7,  svgY: -18, label: 'BR',  color: '#2e7d32' },
+                BRR1: { x: 13, y: 38, svgX: -7,  svgY:  18, label: 'BR',  color: '#f57c00' },
+                BRR2: { x: 20, y: 38, svgX:  0,  svgY:  18, label: 'BR',  color: '#f57c00' },
+                BRR3: { x: 27, y: 38, svgX:  7,  svgY:  18, label: 'BR',  color: '#f57c00' }
+            };
+
             try {
                 // 네이버맵 로드 확인
                 if (typeof naver === "undefined" || !naver.maps) {
@@ -609,21 +622,34 @@
                     </div>
                 `;
             }
-            // ── 함체: 나비넥타이 개선판 ──
+            // ── 함체: 나비넥타이 개선판 + 포트 표시 ──
             if (type === 'junction') {
                 const node = nodes.find(n => n.id === nodeId);
                 const isNew = node && node.isNew;
                 const fillColor   = isNew ? '#ffe8e8' : '#e8f0fe';
                 const strokeColor = isNew ? '#e53935' : '#1a6fd4';
+                const jAngle = (node && node.junctionAngle) ? node.junctionAngle : 0;
+                const portConns = (node && node.portConns) ? node.portConns : {};
+                // 포트 SVG circles 생성
+                var portSvg = '';
+                var JPORTS = window.JUNCTION_PORTS || {};
+                Object.keys(JPORTS).forEach(function(pid) {
+                    var p = JPORTS[pid];
+                    var occupied = !!portConns[pid];
+                    var pc = occupied ? '#ff6d00' : p.color;
+                    var pr = pid === 'IN' || pid === 'OUT' ? 3 : 2.5;
+                    portSvg += '<circle cx="' + p.x + '" cy="' + p.y + '" r="' + pr + '" fill="' + pc + '" stroke="white" stroke-width="1" opacity="0.95"/>';
+                });
                 return `
-                    <div class="custom-marker">
-                        <svg width="32" height="32" viewBox="0 0 40 40" style="filter:drop-shadow(0 2px 8px rgba(0,0,0,0.3));">
+                    <div class="custom-marker" style="transform:rotate(${jAngle}deg);">
+                        <svg width="32" height="32" viewBox="0 0 40 40" style="filter:drop-shadow(0 2px 8px rgba(0,0,0,0.3));overflow:visible;">
                             <circle cx="20" cy="20" r="18" fill="${fillColor}" stroke="${strokeColor}" stroke-width="2.5"/>
                             <polygon points="20,20 7,11 7,29" fill="${strokeColor}"/>
                             <polygon points="20,20 33,11 33,29" fill="${strokeColor}"/>
                             <circle cx="20" cy="20" r="2.5" fill="white" stroke="${strokeColor}" stroke-width="1.5"/>
+                            ${portSvg}
                         </svg>
-                        ${name ? `<div class="marker-label">${name}</div>` : ''}
+                        ${name ? `<div class="marker-label" style="transform:rotate(${-jAngle}deg);">${name}</div>` : ''}
                     </div>
                 `;
             }
@@ -1518,7 +1544,8 @@
                 del: '<svg width="18" height="18" viewBox="0 0 40 40"><rect x="10" y="15" width="20" height="2.5" rx="1" fill="#e74c3c"/><rect x="15" y="8" width="10" height="7" rx="2" fill="none" stroke="#e74c3c" stroke-width="2"/><rect x="11" y="18" width="18" height="16" rx="2" fill="#e74c3c" opacity="0.15" stroke="#e74c3c" stroke-width="2"/><line x1="16" y1="22" x2="16" y2="30" stroke="#e74c3c" stroke-width="2" stroke-linecap="round"/><line x1="20" y1="22" x2="20" y2="30" stroke="#e74c3c" stroke-width="2" stroke-linecap="round"/><line x1="24" y1="22" x2="24" y2="30" stroke="#e74c3c" stroke-width="2" stroke-linecap="round"/></svg>',
                 cell: '<svg width="18" height="18" viewBox="0 0 40 40"><polygon points="20,4 34,12 34,28 20,36 6,28 6,12" fill="none" stroke="#9C27B0" stroke-width="2.5"/><circle cx="20" cy="20" r="3" fill="#9C27B0"/></svg>',
                 boundary: '<svg width="18" height="18" viewBox="0 0 40 40"><polygon points="8,30 5,14 16,5 30,8 35,22 28,34 14,35" fill="#9C27B0" fill-opacity="0.15" stroke="#9C27B0" stroke-width="2" stroke-dasharray="4,2"/><circle cx="8" cy="30" r="2" fill="#9C27B0"/><circle cx="16" cy="5" r="2" fill="#9C27B0"/></svg>',
-                link: '<svg width="18" height="18" viewBox="0 0 40 40"><path d="M16,12 L12,16 Q8,20 12,24 L16,28" fill="none" stroke="#FF6D00" stroke-width="2.5" stroke-linecap="round"/><path d="M24,12 L28,16 Q32,20 28,24 L24,28" fill="none" stroke="#FF6D00" stroke-width="2.5" stroke-linecap="round"/><line x1="16" y1="20" x2="24" y2="20" stroke="#FF6D00" stroke-width="2.5" stroke-linecap="round"/></svg>'
+                link: '<svg width="18" height="18" viewBox="0 0 40 40"><path d="M16,12 L12,16 Q8,20 12,24 L16,28" fill="none" stroke="#FF6D00" stroke-width="2.5" stroke-linecap="round"/><path d="M24,12 L28,16 Q32,20 28,24 L24,28" fill="none" stroke="#FF6D00" stroke-width="2.5" stroke-linecap="round"/><line x1="16" y1="20" x2="24" y2="20" stroke="#FF6D00" stroke-width="2.5" stroke-linecap="round"/></svg>',
+                rotate: '<svg width="18" height="18" viewBox="0 0 40 40"><path d="M8,20 A12,12 0 1,1 20,32" fill="none" stroke="#7b1fa2" stroke-width="2.5" stroke-linecap="round"/><polyline points="8,32 8,20 20,20" fill="none" stroke="#7b1fa2" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/></svg>'
             };
 
             function addItem(icon, label, onclick, opts) {
@@ -1581,6 +1608,22 @@
             } else if (typeof isCoaxType === 'function' && isCoaxType(node.type)) {
                 addItem(icons.link, '같은전주 연결', function() { coaxSamePoleConnect(selectedNode); });
                 addItem(icons.cable, '동축 연결', startConnecting);
+                addItem(icons.move, '장비 이동', startMovingNode, {separator:true});
+                addItem(icons.del, '장비 삭제', deleteNodeFromMenu, {danger:true});
+            } else if (node.type === 'junction') {
+                addItem(icons.info, '접속정보', showNodeInfo);
+                addItem(icons.rotate, '각도 조절', function() { if (window.showJunctionAnglePanel) window.showJunctionAnglePanel(selectedNode); });
+                addItem(icons.cable, '케이블 연결', function() {
+                    if (window.showJunctionPortSelect) {
+                        window.showJunctionPortSelect(selectedNode, 'from', function(portId) {
+                            window._pendingFromPort = portId;
+                            startConnecting();
+                        });
+                    } else {
+                        startConnecting();
+                    }
+                });
+                addItem(icons.wire, '직선도', function() { showWireMapFromMenu(); });
                 addItem(icons.move, '장비 이동', startMovingNode, {separator:true});
                 addItem(icons.del, '장비 삭제', deleteNodeFromMenu, {danger:true});
             } else {
@@ -3197,4 +3240,141 @@
             _panorama.setPov({ pan: pov.pan + 15, tilt: pov.tilt, fov: pov.fov });
         }
     });
+
+        // ── 함체 포트 위경도 변환 ──
+        window.getJunctionPortLatLng = function(node, portId) {
+            if (!map || !node || !portId) return { lat: node.lat, lng: node.lng };
+            var JPORTS = window.JUNCTION_PORTS;
+            var p = JPORTS[portId];
+            if (!p) return { lat: node.lat, lng: node.lng };
+            // SVG 포트 오프셋 (SVG scale = 32/40 = 0.8)
+            var svgScale = 32 / 40;
+            var pxX = p.svgX * svgScale;
+            var pxY = p.svgY * svgScale;
+            // 회전 적용
+            var angle = ((node.junctionAngle || 0) * Math.PI) / 180;
+            var rx = pxX * Math.cos(angle) - pxY * Math.sin(angle);
+            var ry = pxX * Math.sin(angle) + pxY * Math.cos(angle);
+            // 노드 중심의 화면 좌표
+            var centerPt = map.latLngToLayerPoint({ lat: node.lat, lng: node.lng });
+            var portPt = { x: centerPt.x + rx, y: centerPt.y + ry };
+            var portLatLng = map.containerPointToLatLng(portPt);
+            return { lat: portLatLng.lat, lng: portLatLng.lng };
+        };
+
+        // ── 함체 자동 각도 계산 ──
+        window.calcJunctionAutoAngle = function(node) {
+            var conns = connections.filter(function(c) { return c.nodeA === node.id || c.nodeB === node.id; });
+            // OUT 연결 찾기
+            var outConn = conns.find(function(c) {
+                var nA = nodes.find(function(n) { return n.id === c.nodeA; });
+                var dir = (nA && nA.connDirections && nA.connDirections[c.id]) || 'out';
+                var fromId = dir === 'out' ? c.nodeA : c.nodeB;
+                return fromId === node.id;
+            });
+            if (outConn) {
+                var toId = outConn.nodeA === node.id ? outConn.nodeB : outConn.nodeA;
+                var toNode = nodes.find(function(n) { return n.id === toId; });
+                if (toNode) {
+                    var dLat = toNode.lat - node.lat;
+                    var dLng = toNode.lng - node.lng;
+                    // OUT 포트가 아래쪽(svgY=+18)이므로 OUT→대상 방향으로 회전
+                    var angle = Math.atan2(dLng, dLat) * 180 / Math.PI - 180;
+                    return angle;
+                }
+            }
+            // IN만 있으면 IN 반대 방향
+            var inConn = conns.find(function(c) {
+                var nA = nodes.find(function(n) { return n.id === c.nodeA; });
+                var dir = (nA && nA.connDirections && nA.connDirections[c.id]) || 'out';
+                var fromId = dir === 'out' ? c.nodeA : c.nodeB;
+                return fromId !== node.id;
+            });
+            if (inConn) {
+                var fromId2 = inConn.nodeA === node.id ? inConn.nodeB : inConn.nodeA;
+                var fromNode2 = nodes.find(function(n) { return n.id === fromId2; });
+                if (fromNode2) {
+                    var dLat2 = fromNode2.lat - node.lat;
+                    var dLng2 = fromNode2.lng - node.lng;
+                    var angle2 = Math.atan2(dLng2, dLat2) * 180 / Math.PI;
+                    return angle2;
+                }
+            }
+            return 0;
+        };
+
+        // ── 함체 자동 각도 적용 ──
+        window.applyJunctionAutoAngle = function(node) {
+            var angle = window.calcJunctionAutoAngle(node);
+            node.junctionAngle = Math.round(angle);
+            var idx = nodes.findIndex(function(n) { return n.id === node.id; });
+            if (idx !== -1) nodes[idx] = node;
+            if (markers[node.id]) { markers[node.id].setMap(null); delete markers[node.id]; }
+            renderNode(node);
+            saveData();
+        };
+
+        // ── 함체 각도 조절 패널 ──
+        function showJunctionAnglePanel(node) {
+            var old = document.getElementById('junctionAnglePanel');
+            if (old) old.remove();
+
+            var pt = map.latLngToLayerPoint({ lat: node.lat, lng: node.lng });
+            var mapRect = map.getContainer().getBoundingClientRect();
+
+            var panel = document.createElement('div');
+            panel.id = 'junctionAnglePanel';
+            panel.style.cssText = 'position:fixed;left:' + (mapRect.left + pt.x + 20) + 'px;top:' + (mapRect.top + pt.y - 30) + 'px;' +
+                'background:white;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,0.25);z-index:99999;' +
+                'padding:12px 14px;width:220px;font-family:"Segoe UI",sans-serif;user-select:none;';
+
+            var curAngle = node.junctionAngle || 0;
+
+            panel.innerHTML =
+                '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">' +
+                  '<span style="font-size:12px;font-weight:700;color:#333;">함체 각도 조절</span>' +
+                  '<span onclick="document.getElementById(\'junctionAnglePanel\').remove()" style="cursor:pointer;color:#888;font-size:14px;line-height:1;">✕</span>' +
+                '</div>' +
+                '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">' +
+                  '<input type="range" id="junctionAngleSlider" min="-180" max="180" step="1" value="' + curAngle + '" ' +
+                    'style="flex:1;accent-color:#1a6fd4;">' +
+                  '<span id="junctionAngleVal" style="font-size:13px;font-weight:700;color:#1a6fd4;min-width:38px;text-align:right;">' + curAngle + '°</span>' +
+                '</div>' +
+                '<button id="junctionAngleAutoBtn" style="width:100%;padding:7px 0;border:none;border-radius:6px;' +
+                  'background:#1a6fd4;color:white;font-size:13px;font-weight:700;cursor:pointer;">자동</button>';
+
+            document.body.appendChild(panel);
+
+            function applyAngle(val) {
+                node.junctionAngle = parseInt(val);
+                var idx = nodes.findIndex(function(n) { return n.id === node.id; });
+                if (idx !== -1) nodes[idx] = node;
+                document.getElementById('junctionAngleVal').textContent = val + '°';
+                if (markers[node.id]) { markers[node.id].setMap(null); delete markers[node.id]; }
+                renderNode(node);
+                renderAllConnections();
+            }
+
+            document.getElementById('junctionAngleSlider').oninput = function() {
+                applyAngle(this.value);
+            };
+            document.getElementById('junctionAngleSlider').onchange = function() {
+                saveData();
+            };
+            document.getElementById('junctionAngleAutoBtn').onclick = function() {
+                window.applyJunctionAutoAngle(node);
+                var a = node.junctionAngle || 0;
+                document.getElementById('junctionAngleSlider').value = a;
+                document.getElementById('junctionAngleVal').textContent = a + '°';
+            };
+
+            // 화면 밖 보정
+            requestAnimationFrame(function() {
+                var r = panel.getBoundingClientRect();
+                if (r.right > window.innerWidth) panel.style.left = (window.innerWidth - r.width - 8) + 'px';
+                if (r.bottom > window.innerHeight) panel.style.top = (window.innerHeight - r.height - 8) + 'px';
+            });
+        }
+        window.showJunctionAnglePanel = showJunctionAnglePanel;
+
 })();

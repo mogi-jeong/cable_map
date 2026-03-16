@@ -400,6 +400,109 @@
             _nEvent.add(map._m, 'mousemove', onMapMousemoveForSnap);
         }
 
+        // ── 함체 포트 선택 팝업 ──
+        function showJunctionPortSelect(node, direction, callback) {
+            var old = document.getElementById('junctionPortSelectPopup');
+            if (old) old.remove();
+
+            var JPORTS = window.JUNCTION_PORTS;
+            if (!JPORTS) { callback && callback(null); return; }
+
+            var portConns = node.portConns || {};
+            var popup = document.createElement('div');
+            popup.id = 'junctionPortSelectPopup';
+
+            // 헤더
+            var hdr = document.createElement('div');
+            hdr.style.cssText = 'font-size:12px;font-weight:700;color:#333;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;';
+            hdr.innerHTML = '<span>' + (direction === 'from' ? '출발 포트 선택' : '도착 포트 선택') + '</span>';
+            var xBtn = document.createElement('span');
+            xBtn.textContent = '✕';
+            xBtn.style.cssText = 'cursor:pointer;color:#888;font-size:14px;';
+            xBtn.onclick = function() { popup.remove(); };
+            hdr.appendChild(xBtn);
+            popup.appendChild(hdr);
+
+            // 포트 그룹 순서: IN, OUT, BRL1~3, BRR1~3
+            var portOrder = ['IN','OUT','BRL1','BRL2','BRL3','BRR1','BRR2','BRR3'];
+            var grid = document.createElement('div');
+            grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:5px;';
+
+            portOrder.forEach(function(pid) {
+                var p = JPORTS[pid];
+                var occupied = !!portConns[pid];
+                var btn = document.createElement('button');
+                btn.textContent = (p.label === pid ? pid : pid) + (occupied ? ' (사용중)' : '');
+                var bc = p.color;
+                btn.style.cssText = 'padding:7px 6px;border:2px solid ' + bc + ';border-radius:6px;' +
+                    'background:' + (occupied ? '#f5f5f5' : '#fff') + ';color:' + (occupied ? '#aaa' : bc) + ';' +
+                    'font-size:11px;font-weight:700;cursor:' + (occupied ? 'not-allowed' : 'pointer') + ';';
+                if (!occupied) {
+                    btn.onmouseover = function() { btn.style.background = bc; btn.style.color = '#fff'; };
+                    btn.onmouseout = function() { btn.style.background = '#fff'; btn.style.color = bc; };
+                    btn.onclick = function() {
+                        popup.remove();
+                        document.removeEventListener('keydown', escHandler);
+                        callback && callback(pid);
+                    };
+                }
+                grid.appendChild(btn);
+            });
+            popup.appendChild(grid);
+
+            // 포트 없이 연결 버튼
+            var skipBtn = document.createElement('button');
+            skipBtn.textContent = '포트 없이 연결';
+            skipBtn.style.cssText = 'width:100%;margin-top:8px;padding:6px 0;border:1px solid #ccc;border-radius:6px;' +
+                'background:#fff;color:#888;font-size:11px;font-weight:600;cursor:pointer;';
+            skipBtn.onclick = function() { popup.remove(); document.removeEventListener('keydown', escHandler); callback && callback(null); };
+            popup.appendChild(skipBtn);
+
+            // 노드 화면 위치 기준 표시
+            var pt = map.latLngToLayerPoint({ lat: node.lat, lng: node.lng });
+            var mapRect = map.getContainer().getBoundingClientRect();
+            popup.style.left = (mapRect.left + pt.x + 22) + 'px';
+            popup.style.top  = (mapRect.top  + pt.y - 20) + 'px';
+
+            document.body.appendChild(popup);
+
+            // 화면 밖 보정
+            requestAnimationFrame(function() {
+                var r = popup.getBoundingClientRect();
+                if (r.right > window.innerWidth) popup.style.left = (window.innerWidth - r.width - 8) + 'px';
+                if (r.bottom > window.innerHeight) popup.style.top = (window.innerHeight - r.height - 8) + 'px';
+            });
+
+            function escHandler(e) {
+                if (e.key === 'Escape') { popup.remove(); document.removeEventListener('keydown', escHandler); }
+            }
+            document.addEventListener('keydown', escHandler);
+        }
+        window.showJunctionPortSelect = showJunctionPortSelect;
+
+        // ── portConns 업데이트 헬퍼 ──
+        function _updateJunctionPortConns(conn, remove) {
+            var fromNode = nodes.find(function(n) { return n.id === connFrom(conn); });
+            var toNode   = nodes.find(function(n) { return n.id === connTo(conn); });
+            if (fromNode && fromNode.type === 'junction' && conn.fromPort) {
+                if (!fromNode.portConns) fromNode.portConns = {};
+                if (remove) delete fromNode.portConns[conn.fromPort];
+                else fromNode.portConns[conn.fromPort] = conn.id;
+            }
+            if (toNode && toNode.type === 'junction' && conn.toPort) {
+                if (!toNode.portConns) toNode.portConns = {};
+                if (remove) delete toNode.portConns[conn.toPort];
+                else toNode.portConns[conn.toPort] = conn.id;
+            }
+            // 마커 리렌더
+            if (fromNode && fromNode.type === 'junction' && markers[fromNode.id]) {
+                markers[fromNode.id].setMap(null); delete markers[fromNode.id]; renderNode(fromNode);
+            }
+            if (toNode && toNode.type === 'junction' && markers[toNode.id]) {
+                markers[toNode.id].setMap(null); delete markers[toNode.id]; renderNode(toNode);
+            }
+        }
+
         // 두 좌표 간 거리(m)
         function distanceM(lat1, lng1, lat2, lng2) {
             const R = 6371000;
@@ -523,7 +626,15 @@
                         }
                         _clearCoaxRouteLabel();
                         clearPreviewOnly();
-                        showConnectionModal();
+                        // 도착 장비가 함체이면 포트 선택 팝업 먼저
+                        if (nearJunction.type === 'junction' && window.showJunctionPortSelect) {
+                            window.showJunctionPortSelect(nearJunction, 'to', function(portId) {
+                                window._pendingToPort = portId;
+                                showConnectionModal();
+                            });
+                        } else {
+                            showConnectionModal();
+                        }
                     },
                     '근처에 ' + jName + ' 장비가 있습니다',
                     '연결'
@@ -766,7 +877,9 @@
                 waypoints: [].concat(pendingWaypoints || []),
                 portMapping: [],
                 inFromCableId: null,
-                outPort: window._coaxCurrentOutPort || null
+                outPort: window._coaxCurrentOutPort || null,
+                fromPort: window._pendingFromPort || null,
+                toPort: window._pendingToPort || null
             };
 
             connectingToNode.inOrder.push(connId);
@@ -774,6 +887,10 @@
             if (toIdx2 !== -1) nodes[toIdx2] = connectingToNode;
 
             connections.push(connection);
+
+            // 함체 portConns 업데이트
+            _updateJunctionPortConns(connection, false);
+
             saveData();
             renderAllConnections();
 
@@ -790,6 +907,8 @@
             selectedNode = null;
             pendingWaypoints = [];
             window._coaxCurrentOutPort = null;
+            window._pendingFromPort = null;
+            window._pendingToPort = null;
             hideStatus();
             showStatus(cores + 'C 케이블이 연결되었습니다');
         }
@@ -873,7 +992,9 @@
                             waypoints: wp,
                             portMapping: [],
                             inFromCableId: null,
-                            outPort: _isCoaxConn ? (window._coaxCurrentOutPort || null) : null
+                            outPort: _isCoaxConn ? (window._coaxCurrentOutPort || null) : null,
+                            fromPort: window._pendingFromPort || null,
+                            toPort: window._pendingToPort || null
                         };
                         // connDirections 설정
                         fn.connDirections[newConnId] = 'out';
@@ -897,6 +1018,10 @@
                         if (tnIdx !== -1) nodes[tnIdx] = tn;
 
                         connections.push(newConn);
+                        // 함체 portConns 업데이트
+                        _updateJunctionPortConns(newConn, false);
+                        window._pendingFromPort = null;
+                        window._pendingToPort = null;
                         saveData();
                         renderAllConnections();
                         showStatus(`IN${inNum} 케이블이 연결되었습니다`);
@@ -952,16 +1077,22 @@
                 waypoints: [...(pendingWaypoints || [])],
                 portMapping: [],
                 inFromCableId: null,
-                outPort: _isCoaxConn ? (window._coaxCurrentOutPort || null) : null
+                outPort: _isCoaxConn ? (window._coaxCurrentOutPort || null) : null,
+                fromPort: window._pendingFromPort || null,
+                toPort: window._pendingToPort || null
             };
             pendingWaypoints = [];
-            
+
             // 첫 번째 IN 연결이면 inOrder에 등록
             connectingToNode.inOrder.push(connection.id);
             const toIdx2 = nodes.findIndex(n => n.id === connectingToNode.id);
             if (toIdx2 !== -1) nodes[toIdx2] = connectingToNode;
 
             connections.push(connection);
+
+            // 함체 portConns 업데이트
+            _updateJunctionPortConns(connection, false);
+
             saveData();
             renderAllConnections();
 
@@ -983,6 +1114,8 @@
             selectedNode = null;
             hideStatus();
             if (_isCoaxConn) window._coaxCurrentOutPort = null;
+            window._pendingFromPort = null;
+            window._pendingToPort = null;
             showStatus('IN1 케이블이 연결되었습니다');
         }
         
@@ -1103,17 +1236,27 @@
             const PARALLEL_OFFSET_M = 4; // 병렬선 간격 4m
             const parallelOffset = total > 1 ? (myIndex - (total-1)/2) * PARALLEL_OFFSET_M : 0;
 
-            // 경로 생성 — ONU outPort 오프셋 적용
+            // 경로 생성 — ONU outPort / 함체 포트 오프셋 적용
             let startLat = fromNode.lat, startLng = fromNode.lng;
             if (fromNode.type === 'onu' && connection.outPort && typeof getOnuPortLatLng === 'function') {
                 var portPos = getOnuPortLatLng(fromNode, connection.outPort);
                 startLat = portPos.lat;
                 startLng = portPos.lng;
+            } else if (fromNode.type === 'junction' && connection.fromPort && window.getJunctionPortLatLng) {
+                var jFromPos = window.getJunctionPortLatLng(fromNode, connection.fromPort);
+                startLat = jFromPos.lat;
+                startLng = jFromPos.lng;
+            }
+            let endLat = toNode.lat, endLng = toNode.lng;
+            if (toNode.type === 'junction' && connection.toPort && window.getJunctionPortLatLng) {
+                var jToPos = window.getJunctionPortLatLng(toNode, connection.toPort);
+                endLat = jToPos.lat;
+                endLng = jToPos.lng;
             }
             let path = [
                 [startLat, startLng],
                 ...connection.waypoints.map(wp => [wp.lat, wp.lng]),
-                [toNode.lat, toNode.lng]
+                [endLat, endLng]
             ];
 
             // 전주 경유점 옆으로 오프셋
@@ -1308,6 +1451,8 @@
             var toNodeId = conn ? connTo(conn) : null;
             var fromNodeId = conn ? connFrom(conn) : null;
             if (conn) {
+                // 함체 portConns 정리
+                _updateJunctionPortConns(conn, true);
 
                 // toNode 포트 초기화 + 하위 노드 연쇄 초기화
                 const toNode = nodes.find(n => n.id === toNodeId);
