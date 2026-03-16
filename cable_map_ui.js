@@ -1498,14 +1498,18 @@
                 var portPos = getOnuPortLatLng(fromNode, connection.outPort);
                 startLat = portPos.lat;
                 startLng = portPos.lng;
-            } else if (fromNode.type === 'junction' && connection.fromPort && window.getJunctionPortLatLng) {
-                var jFromPos = window.getJunctionPortLatLng(fromNode, connection.fromPort);
+            } else if (fromNode.type === 'junction' && window.getJunctionPortLatLng) {
+                // fromPort 없으면 OUT 기본 사용 (포트 미지정 기존 연결 포함)
+                var _fromPort = connection.fromPort || 'OUT';
+                var jFromPos = window.getJunctionPortLatLng(fromNode, _fromPort);
                 startLat = jFromPos.lat;
                 startLng = jFromPos.lng;
             }
             let endLat = toNode.lat, endLng = toNode.lng;
-            if (toNode.type === 'junction' && connection.toPort && window.getJunctionPortLatLng) {
-                var jToPos = window.getJunctionPortLatLng(toNode, connection.toPort);
+            if (toNode.type === 'junction' && window.getJunctionPortLatLng) {
+                // toPort 없으면 IN 기본 사용 (포트 미지정 기존 연결 포함)
+                var _toPort = connection.toPort || 'IN';
+                var jToPos = window.getJunctionPortLatLng(toNode, _toPort);
                 endLat = jToPos.lat;
                 endLng = jToPos.lng;
             }
