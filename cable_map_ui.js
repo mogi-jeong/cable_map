@@ -1494,9 +1494,12 @@
                 conn.waypoints.map(function(w) { return [w.lat, w.lng]; }),
                 [[tNode.lat, tNode.lng]]
             );
-            var polePathIdx = conn.waypoints.findIndex(function(w) { return w.snappedPole === poleId; }) + 1;
+            var wpIdx = conn.waypoints.findIndex(function(w) { return w.snappedPole === poleId; });
+            if (wpIdx < 0) return null;
+            var polePathIdx = wpIdx + 1;
             var prev = fullPath[polePathIdx - 1];
             var next = fullPath[Math.min(polePathIdx + 1, fullPath.length - 1)];
+            if (!prev || !next) return null;
             return { dlat: next[0] - prev[0], dlng: next[1] - prev[1] };
         }
 
