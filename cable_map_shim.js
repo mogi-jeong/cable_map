@@ -134,7 +134,7 @@
             d.innerHTML=this._html;
             var noClick=this._z<0;
             d.style.cssText='pointer-events:'+(noClick?'none':'all')+';position:relative;z-index:'+(noClick?'1':'9999')+';';
-            if(!noClick)d.addEventListener('click',function(e){e.stopPropagation();if(self._ls.click)self._ls.click.forEach(function(f){f();});});
+            if(!noClick)d.addEventListener('click',function(e){e.stopPropagation();if(window._junctionPortPopupOpen)return;if(self._ls.click)self._ls.click.forEach(function(f){f();});});
             this._ov=new NaverCustomOverlay({position:new naver.maps.LatLng(this._lat,this._lng),content:d,map:mw._m,zIndex:10+Math.floor(this._z/1000),yAnchor:0.5,xAnchor:0.5});
             return this;
         },

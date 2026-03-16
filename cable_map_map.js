@@ -203,6 +203,8 @@
                     if (typeof window.applyZoomPreset === 'function') window.applyZoomPreset();
                     // 동축 장비 심볼 크기 줌 연동
                     if (typeof rerenderCoaxNodes === 'function') rerenderCoaxNodes();
+                    // 케이블 간격 줌 연동
+                    if (typeof renderAllConnections === 'function') renderAllConnections();
                 });
                 setTimeout(function(){ _updateZoomInfo(); if (typeof window.applyZoomPreset === 'function') window.applyZoomPreset(); }, 500); // 초기 표시
 
@@ -565,8 +567,8 @@
         // 케이블 연결 취소
         function cancelConnecting() {
             clearPendingWaypoints();
-            connectingMode = false;
-            connectingFromNode = null;
+            connectingMode = false; window.connectingMode = false; document.body.classList.remove('connecting-mode');
+            connectingFromNode = null; window._connectingSourceNodeId = null;
             connectingToNode = null;
             hideStatus();
         }
@@ -798,6 +800,8 @@
             }).addTo(map);
             
             marker.on('click', function() {
+                if (window._connectingSourceNodeId && node.id === window._connectingSourceNodeId) return;
+                if (window._junctionPortPopupOpen) return;
                 window._nodeJustClicked = true;
                 clearTimeout(window._nodeClickTimer);
                 window._nodeClickTimer = setTimeout(function() {
@@ -1162,8 +1166,14 @@
         }
 
         function onNodeClick(node) {
+            // 출발 노드 확정 후: 해당 노드 재클릭 완전 차단 (Naver 비동기 이벤트 방지 — 타이밍 무관)
+            if (window._connectingSourceNodeId && node.id === window._connectingSourceNodeId) return;
+            // 함체 포트 선택 팝업 열린 동안: 모든 노드 클릭 차단
+            if (window._junctionPortPopupOpen) return;
             // 장비 이동 모드: 장비/전주 클릭 차단 (map.once('click')이 처리)
             if (window.movingNodeMode) return;
+            // 케이블 연결 모드: 출발지 노드 재클릭 무시 (포트 팝업 버블링 방지 — _nodeJustClicked 세팅 차단)
+            if (connectingMode && connectingFromNode && node.id === connectingFromNode.id) return;
             // 도면보기 모드: 동축 장비 클릭 차단
             if (typeof _coaxMode !== 'undefined' && _coaxMode === 'view' && typeof isCoaxType === 'function' && isCoaxType(node.type)) {
                 showStatus('도면보기 모드에서는 편집할 수 없습니다 (ESC: 종료)');
@@ -1225,13 +1235,28 @@
                                 if (dlat < 0.0005 && dlng < 0.0005) pendingWaypoints.pop();
                             }
                             clearPreviewOnly();
-                            showConnectionModal();
+                            // 도착 함체이면 포트 자동결정 or 선택 팝업
+                            if (_nodeTarget.type === 'junction' && window.showJunctionPortSelect && window._getJunctionPortConns) {
+                                var expectedTo = (window._pendingFromPort === 'IN') ? 'OUT' : 'IN';
+                                var toPortConns = window._getJunctionPortConns(_nodeTarget);
+                                if (!toPortConns[expectedTo]) {
+                                    window._pendingToPort = expectedTo;
+                                    showConnectionModal();
+                                } else {
+                                    window.showJunctionPortSelect(_nodeTarget, 'to', function(portId) {
+                                        window._pendingToPort = portId;
+                                        showConnectionModal();
+                                    });
+                                }
+                            } else {
+                                showConnectionModal();
+                            }
                         },
                         node.name || '',
                         '연결'
                     );
                 } else {
-                    showStatus('같은 장비는 연결할 수 없습니다');
+                    return; // 출발지와 같은 노드 재클릭 (이미 위에서 차단되지만 방어 코드)
                 }
             } else {
                 closeMenuModal();

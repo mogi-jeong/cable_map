@@ -364,7 +364,7 @@
             modal.classList.remove('active');
             selectedNode = null;
             connectingMode = false; window.connectingMode = false; document.body.classList.remove('connecting-mode');
-            connectingFromNode = null;
+            connectingFromNode = null; window._connectingSourceNodeId = null;
             connectingToNode = null;
             // 커서 복원
             if (window._setMapCursorMode) window._setMapCursorMode('default');
@@ -384,10 +384,11 @@
             closeMenuModal();
             window._pendingFromPort = null;
             window._pendingToPort   = null;
+            // 출발 노드 ID를 즉시 저장 — onNodeClick이 언제 발화해도 차단
+            window._connectingSourceNodeId = selectedNode ? selectedNode.id : null;
             // FROM 노드가 함체이면 출발 포트 먼저 선택
             if (selectedNode && selectedNode.type === 'junction' && window.showJunctionPortSelect) {
                 window.showJunctionPortSelect(selectedNode, 'from', function(portId) {
-                    console.log('[DBG] 포트 선택 콜백 실행 portId=', portId, 'connectingMode=', connectingMode);
                     window._pendingFromPort = portId;
                     _doStartConnecting();
                 });
@@ -397,7 +398,6 @@
         }
 
         function _doStartConnecting() {
-            console.log('[DBG] _doStartConnecting 시작, selectedNode=', selectedNode && selectedNode.id);
             connectingMode = true; window.connectingMode = true; document.body.classList.add('connecting-mode');
             connectingFromNode = selectedNode;
             pendingWaypoints = [];
@@ -413,7 +413,6 @@
             map.off('click', onMapClickForWaypoint);
             // 현재 이벤트 사이클 이후 등록 — 팝업/메뉴 버튼 클릭이 즉시 waypoint로 처리되는 문제 방지
             setTimeout(function() {
-                console.log('[DBG] map click 핸들러 등록됨');
                 map.on('click', onMapClickForWaypoint);
             }, 0);
             window._mousemoveHandler = onMapMousemoveForSnap;
@@ -441,6 +440,7 @@
         function showJunctionPortSelect(node, direction, callback) {
             var old = document.getElementById('junctionPortSelectPopup');
             if (old) old.remove();
+            window._junctionPortPopupOpen = true;
 
             var JPORTS = window.JUNCTION_PORTS;
             if (!JPORTS) { callback && callback(null); return; }
@@ -588,6 +588,9 @@
                         popup.remove();
                         document.removeEventListener('keydown', escHandler);
                         callback && callback(pid);
+                        requestAnimationFrame(function() { requestAnimationFrame(function() {
+                            window._junctionPortPopupOpen = false;
+                        }); });
                     });
                 } else {
                     // 사용중 표시: 빗금 패턴
@@ -635,11 +638,13 @@
                 defaultBtn.onmouseover = function() { defaultBtn.style.opacity = '0.85'; };
                 defaultBtn.onmouseout  = function() { defaultBtn.style.opacity = '1'; };
                 defaultBtn.onclick = function(e) {
-                    console.log('[DBG] 기본 포트 버튼 클릭 portId=', defaultPortId);
                     e.stopPropagation();
                     popup.remove();
                     document.removeEventListener('keydown', escHandler);
                     callback && callback(defaultPortId);
+                    requestAnimationFrame(function() { requestAnimationFrame(function() {
+                        window._junctionPortPopupOpen = false;
+                    }); });
                 };
             }
             popup.appendChild(defaultBtn);
@@ -655,6 +660,10 @@
                 popup.remove();
                 document.removeEventListener('keydown', escHandler);
                 callback && callback(null);
+                requestAnimationFrame(function() { requestAnimationFrame(function() {
+                    var _m = document.getElementById('map'); if (_m) _m.style.pointerEvents = '';
+                    window._junctionPortPopupOpen = false;
+                }); });
             };
             popup.appendChild(skipBtn);
 
@@ -669,6 +678,8 @@
             document.getElementById('jPortSelectClose').onclick = function() {
                 popup.remove();
                 document.removeEventListener('keydown', escHandler);
+                var _m = document.getElementById('map'); if (_m) _m.style.pointerEvents = '';
+                window._junctionPortPopupOpen = false;
             };
 
             // 화면 밖 보정
@@ -681,7 +692,7 @@
             });
 
             function escHandler(e) {
-                if (e.key === 'Escape') { popup.remove(); document.removeEventListener('keydown', escHandler); }
+                if (e.key === 'Escape') { popup.remove(); document.removeEventListener('keydown', escHandler); window._junctionPortPopupOpen = false; }
             }
             document.addEventListener('keydown', escHandler);
         }
@@ -835,13 +846,11 @@
 
         let _lastWaypointClick = 0;
         function onMapClickForWaypoint(e) {
-            console.log('[DBG] onMapClickForWaypoint 진입 connectingMode=', connectingMode, '_nodeJustClicked=', window._nodeJustClicked);
             if (!connectingMode || !connectingFromNode) return;
-            if (window._nodeJustClicked) { console.log('[DBG] _nodeJustClicked 차단'); return; }
+            if (window._nodeJustClicked) return;
             const _now = Date.now();
-            if (_now - _lastWaypointClick < 300) { console.log('[DBG] 300ms 중복 차단'); return; }
+            if (_now - _lastWaypointClick < 300) return;
             _lastWaypointClick = _now;
-            console.log('[DBG] waypoint 처리 lat=', e.latlng && e.latlng.lat);
             let lat = e.latlng.lat, lng = e.latlng.lng;
 
             // 이전 경유 라벨 제거
@@ -960,6 +969,10 @@
                 var portPos = getOnuPortLatLng(connectingFromNode, window._coaxCurrentOutPort);
                 startLat = portPos.lat;
                 startLng = portPos.lng;
+            } else if (connectingFromNode.type === 'junction' && window._pendingFromPort && window.getJunctionPortLatLng) {
+                var jPortPos = window.getJunctionPortLatLng(connectingFromNode, window._pendingFromPort);
+                startLat = jPortPos.lat;
+                startLng = jPortPos.lng;
             }
             const path = [
                 [startLat, startLng],
@@ -1110,7 +1123,7 @@
                     '확인'
                 );
                 connectingMode = false; window.connectingMode = false; document.body.classList.remove('connecting-mode');
-                connectingFromNode = null; connectingToNode = null;
+                connectingFromNode = null; window._connectingSourceNodeId = null; connectingToNode = null;
                 clearPreviewOnly(); pendingWaypoints = [];
                 return;
             }
@@ -1166,7 +1179,7 @@
 
             clearPreviewOnly();
             connectingMode = false; window.connectingMode = false; document.body.classList.remove('connecting-mode');
-            connectingFromNode = null; connectingToNode = null;
+            connectingFromNode = null; window._connectingSourceNodeId = null; connectingToNode = null;
             selectedNode = null;
             pendingWaypoints = [];
             window._coaxCurrentOutPort = null;
@@ -1374,7 +1387,7 @@
             // 상태 완전 초기화
             document.getElementById('connectionModal').classList.remove('active');
             connectingMode = false; window.connectingMode = false; document.body.classList.remove('connecting-mode');
-            connectingFromNode = null;
+            connectingFromNode = null; window._connectingSourceNodeId = null;
             connectingToNode = null;
             selectedNode = null;
             hideStatus();
@@ -1388,7 +1401,7 @@
         function closeConnectionModal() {
             document.getElementById('connectionModal').classList.remove('active');
             connectingMode = false; window.connectingMode = false; document.body.classList.remove('connecting-mode');
-            connectingFromNode = null;
+            connectingFromNode = null; window._connectingSourceNodeId = null;
             connectingToNode = null;
             selectedNode = null;
             hideStatus();
@@ -1449,6 +1462,17 @@
             return { dlat: -dx/len * distM * degPerM, dlng: dy/len * distM * degPerM };
         }
 
+        // 줌 레벨에 따라 오프셋 거리 조정 (시각적 일관성 유지)
+        function getOffsetM(baseM) {
+            var z = map ? map.getZoom() : 16;
+            if (z >= 19) return baseM * 0.25;
+            if (z >= 18) return baseM * 0.4;
+            if (z >= 17) return baseM * 0.65;
+            if (z >= 16) return baseM * 1.0;
+            if (z >= 15) return baseM * 1.6;
+            return baseM * 2.5;
+        }
+
         // 경로 전체에 수직 오프셋 적용
         function applyPathOffset(path, offsetM) {
             if (offsetM === 0 || path.length < 2) return path;
@@ -1461,16 +1485,43 @@
         }
 
         // 전주 경유점 오프셋 (전주 옆으로 살짝 비켜감)
-        function applyPoleOffset(path, waypoints) {
+        // 전주에서 특정 케이블의 진행 방향 벡터를 반환
+        function getConnDirAtPole(conn, poleId) {
+            var fNode = nodes.find(function(n) { return n.id === connFrom(conn); });
+            var tNode = nodes.find(function(n) { return n.id === connTo(conn); });
+            if (!fNode || !tNode) return null;
+            var fullPath = [[fNode.lat, fNode.lng]].concat(
+                conn.waypoints.map(function(w) { return [w.lat, w.lng]; }),
+                [[tNode.lat, tNode.lng]]
+            );
+            var polePathIdx = conn.waypoints.findIndex(function(w) { return w.snappedPole === poleId; }) + 1;
+            var prev = fullPath[polePathIdx - 1];
+            var next = fullPath[Math.min(polePathIdx + 1, fullPath.length - 1)];
+            return { dlat: next[0] - prev[0], dlng: next[1] - prev[1] };
+        }
+
+        function applyPoleOffset(path, waypoints, connection) {
             if (!waypoints || waypoints.length === 0) return path;
-            const POLE_OFFSET_M = 0; // 전주 중심
             return path.map(function(pt, i) {
                 if (i === 0 || i === path.length-1) return pt;
                 const wp = waypoints[i-1];
                 if (!wp || !wp.snappedPole) return pt;
+                var poleId = wp.snappedPole;
+                var poleConns = connection ? connections.filter(function(c) {
+                    return c.waypoints && c.waypoints.some(function(w) { return w.snappedPole === poleId; });
+                }) : [];
+                var poleIdx = poleConns.findIndex(function(c) { return c.id === connection.id; });
+                if (poleIdx <= 0) return pt;
+                var offsetM = poleIdx * getOffsetM(3);
                 const prev = path[i-1];
                 const next = path[Math.min(i+1, path.length-1)];
-                const off = perpOffset(prev[0],prev[1],next[0],next[1], POLE_OFFSET_M);
+                var refDir = getConnDirAtPole(poleConns[0], poleId);
+                if (refDir) {
+                    var myDlat = next[0] - prev[0], myDlng = next[1] - prev[1];
+                    if (myDlat * refDir.dlat + myDlng * refDir.dlng < 0) offsetM = -offsetM;
+                }
+                if (connection.offsetFlip) offsetM = -offsetM;
+                const off = perpOffset(prev[0],prev[1],next[0],next[1], offsetM);
                 return [pt[0]+off.dlat, pt[1]+off.dlng];
             });
         }
@@ -1498,8 +1549,7 @@
             });
             const myIndex = siblingConns.findIndex(c => c.id === connection.id);
             const total = siblingConns.length;
-            const PARALLEL_OFFSET_M = 4; // 병렬선 간격 4m
-            const parallelOffset = total > 1 ? (myIndex - (total-1)/2) * PARALLEL_OFFSET_M : 0;
+            const parallelOffset = total > 1 ? (myIndex - (total-1)/2) * getOffsetM(6) : 0;
 
             // 경로 생성 — ONU outPort / 함체 포트 오프셋 적용
             let startLat = fromNode.lat, startLng = fromNode.lng;
@@ -1529,7 +1579,7 @@
             ];
 
             // 전주 경유점 옆으로 오프셋
-            path = applyPoleOffset(path, connection.waypoints);
+            path = applyPoleOffset(path, connection.waypoints, connection);
 
             // 병렬선 오프셋
             if (parallelOffset !== 0) {
@@ -1882,6 +1932,15 @@
             _waypointInsertPath = null;
             document.body.classList.remove('connecting-mode');
         }
+
+        // ===== 오프셋 방향 반전 =====
+        window.flipCableOffset = function(connId) {
+            var conn = connections.find(function(c) { return c.id === connId; });
+            if (!conn) return;
+            conn.offsetFlip = !conn.offsetFlip;
+            renderAllConnections();
+            saveData();
+        };
 
         // ===== 경로 삭제 모드 =====
         var _wpDeleteConn = null;
@@ -2595,6 +2654,7 @@
                   (connection.cableType !== 'coax' ? '<button onclick="' + _ci('toggleCableType') + '" style="' + btnLight + '" onmouseover="this.style.background=\'#e2e8f0\'" onmouseout="this.style.background=\'#f0f4fa\'">' + icoSwitch + '신설/기설 전환</button>' : '') +
                   '<button onclick="startWaypointInsertModeById(\'' + cid + '\');closeCableInfoPanel();" style="' + btnLight + '" onmouseover="this.style.background=\'#e2e8f0\'" onmouseout="this.style.background=\'#f0f4fa\'">' + icoAdd + '경로 추가</button>' +
                   '<button onclick="startWaypointDeleteModeById(\'' + cid + '\');closeCableInfoPanel();" style="' + btnLight + '" onmouseover="this.style.background=\'#e2e8f0\'" onmouseout="this.style.background=\'#f0f4fa\'">' + icoRemove + '경로 삭제</button>' +
+                  '<button onclick="flipCableOffset(\'' + cid + '\');closeCableInfoPanel();" style="' + btnLight + '" onmouseover="this.style.background=\'#e2e8f0\'" onmouseout="this.style.background=\'#f0f4fa\'"><svg width="15" height="15" viewBox="0 0 20 20" fill="none" style="vertical-align:middle;margin-right:4px;"><path d="M4 10h12M4 10l4-4M4 10l4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M16 10l-4-4M16 10l-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>경로 방향 반전</button>' +
                   '<button onclick="extendCableFrom(\'' + cid + '\',' + (e.latlng.lat) + ',' + (e.latlng.lng) + ');closeCableInfoPanel();" style="' + btnLight + '" onmouseover="this.style.background=\'#e2e8f0\'" onmouseout="this.style.background=\'#f0f4fa\'"><svg width="15" height="15" viewBox="0 0 20 20" fill="none"><path d="M10 3v14M3 10h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3 2"/></svg>케이블 연장</button>' +
                 '</div>' +
                 // 삭제 영역
@@ -2931,7 +2991,7 @@
 
             // 상태 초기화
             connectingMode = false; window.connectingMode = false; document.body.classList.remove('connecting-mode');
-            connectingFromNode = null;
+            connectingFromNode = null; window._connectingSourceNodeId = null;
             connectingToNode = null;
             pendingWaypoints = [];
             if (window._setMapCursorMode) window._setMapCursorMode('default');
@@ -3429,7 +3489,7 @@
             }
 
             // 연결 모드 종료: 장비 클릭으로 다시 시작해야 함
-            connectingFromNode = null;
+            connectingFromNode = null; window._connectingSourceNodeId = null;
             connectingToNode = null;
             pendingWaypoints = [];
             waypointMarkers = [];
