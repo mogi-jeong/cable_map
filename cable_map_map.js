@@ -641,15 +641,17 @@
                     portSvg += '<circle cx="' + p.x + '" cy="' + p.y + '" r="' + pr + '" fill="' + pc + '" stroke="white" stroke-width="1" opacity="0.95"/>';
                 });
                 return `
-                    <div class="custom-marker" style="transform:rotate(${jAngle}deg);">
-                        <svg width="32" height="32" viewBox="0 0 40 40" style="filter:drop-shadow(0 2px 8px rgba(0,0,0,0.3));overflow:visible;">
-                            <circle cx="20" cy="20" r="18" fill="${fillColor}" stroke="${strokeColor}" stroke-width="2.5"/>
-                            <polygon points="20,20 7,11 7,29" fill="${strokeColor}"/>
-                            <polygon points="20,20 33,11 33,29" fill="${strokeColor}"/>
-                            <circle cx="20" cy="20" r="2.5" fill="white" stroke="${strokeColor}" stroke-width="1.5"/>
-                            ${portSvg}
-                        </svg>
-                        ${name ? `<div class="marker-label" style="transform:rotate(${-jAngle}deg);">${name}</div>` : ''}
+                    <div class="custom-marker">
+                        <div style="transform:rotate(${jAngle}deg);display:inline-block;">
+                            <svg width="32" height="32" viewBox="0 0 40 40" style="filter:drop-shadow(0 2px 8px rgba(0,0,0,0.3));overflow:visible;">
+                                <circle cx="20" cy="20" r="18" fill="${fillColor}" stroke="${strokeColor}" stroke-width="2.5"/>
+                                <polygon points="20,20 7,11 7,29" fill="${strokeColor}"/>
+                                <polygon points="20,20 33,11 33,29" fill="${strokeColor}"/>
+                                <circle cx="20" cy="20" r="2.5" fill="white" stroke="${strokeColor}" stroke-width="1.5"/>
+                                ${portSvg}
+                            </svg>
+                        </div>
+                        ${name ? `<div class="marker-label">${name}</div>` : ''}
                     </div>
                 `;
             }
