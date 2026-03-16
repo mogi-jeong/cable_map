@@ -174,14 +174,24 @@
                 map.on('move', _rafDraw);
 
                 // 줌 애니메이션 동안 canvas 재그리기 (300ms 동안 타이머 분산)
+                function _updateZoomInfo() {
+                    var el = document.getElementById('zoomInfo');
+                    if (!el || !map) return;
+                    var z = map.getZoom();
+                    var S = z >= 18 ? 18 : z >= 17 ? 16 : z >= 16 ? 14 : z >= 15 ? 12 : 8;
+                    el.textContent = 'Lv.' + z + ' | S:' + S;
+                }
                 map.on('zoomend', function() {
                     [50, 100, 150, 200, 250, 300].forEach(function(t) {
                         setTimeout(drawPoleCanvas, t);
                     });
                     scheduleRefreshPoles();
+                    _updateZoomInfo();
+                    if (typeof window.applyZoomPreset === 'function') window.applyZoomPreset();
                     // 동축 장비 심볼 크기 줌 연동
                     if (typeof rerenderCoaxNodes === 'function') rerenderCoaxNodes();
                 });
+                setTimeout(function(){ _updateZoomInfo(); if (typeof window.applyZoomPreset === 'function') window.applyZoomPreset(); }, 500); // 초기 표시
 
                 // moveend: 위치 저장 + pole 재로드 (디바운스)
                 map.on('moveend', function() {
@@ -319,7 +329,8 @@
                             if (dist <= 20) {
                                 // 원 안 → 클릭한 위치에 장비 생성
                                 var _snapPoleId = _junctionPole.id;
-                                var _snapPoleName = _junctionPole.name || '';
+                                var _isPrivatePole = _junctionPole.type === 'pole_private' || (_junctionPole.memo||'').includes('자가주:true');
+                                var _snapPoleName = (_junctionPole.name || '') + (_isPrivatePole ? '(자가주)' : '');
                                 var _snapType = addingType;
                                 var _snapLat = e.latlng.lat;
                                 var _snapLng = e.latlng.lng;
@@ -1120,6 +1131,8 @@
         }
 
         function onNodeClick(node) {
+            // 장비 이동 모드: 장비/전주 클릭 차단 (map.once('click')이 처리)
+            if (window.movingNodeMode) return;
             // 도면보기 모드: 동축 장비 클릭 차단
             if (typeof _coaxMode !== 'undefined' && _coaxMode === 'view' && typeof isCoaxType === 'function' && isCoaxType(node.type)) {
                 showStatus('도면보기 모드에서는 편집할 수 없습니다 (ESC: 종료)');
@@ -1204,7 +1217,7 @@
             const colors = { pole:'#1a6fd4', pole_existing:'#1a6fd4', pole_new:'#e53935', pole_removed:'#333333', pole_private:'#9c27b0' };
             // 현재 타입 (구버전 'pole' → pole_existing 취급)
             const curType = (node.type === 'pole') ? 'pole_existing' : node.type;
-            const isSelf = (node.memo||'').includes('자가주:true');
+            const isSelf = node.type === 'pole_private' || (node.memo||'').includes('자가주:true');
             const poleNum = (node.memo||'').replace('자가주:true','').replace('전산화번호: ','').trim();
             const labelAngle  = node.labelAngle  != null ? node.labelAngle  : 0;
             const labelOffset = node.labelOffset != null ? node.labelOffset : 20;
@@ -2549,6 +2562,24 @@
     };
 
     // ===== 스타일 설정 시스템 =====
+
+    // 줌 레벨별 기본 스타일 (사용자 설정값)
+    var _ZOOM_STYLE_PRESETS = {
+        15: { opticalWeight:1,   coaxWeight:1, cableOpacity:0.8, poleRadius:2,   poleLabelSize:8,  spanLabelSize:7,  equipIconSize:12 },
+        16: { opticalWeight:2,   coaxWeight:2, cableOpacity:0.8, poleRadius:3,   poleLabelSize:9,  spanLabelSize:8,  equipIconSize:16 },
+        17: { opticalWeight:2,   coaxWeight:2, cableOpacity:0.8, poleRadius:3.5, poleLabelSize:10, spanLabelSize:9,  equipIconSize:18 },
+        18: { opticalWeight:3,   coaxWeight:2, cableOpacity:0.8, poleRadius:4,   poleLabelSize:11, spanLabelSize:10, equipIconSize:20 },
+        19: { opticalWeight:3.5, coaxWeight:2, cableOpacity:0.8, poleRadius:4.5, poleLabelSize:12, spanLabelSize:11, equipIconSize:24 },
+        20: { opticalWeight:4,   coaxWeight:2, cableOpacity:0.8, poleRadius:5,   poleLabelSize:13, spanLabelSize:12, equipIconSize:26 },
+        21: { opticalWeight:4.5, coaxWeight:2, cableOpacity:0.8, poleRadius:5.5, poleLabelSize:14, spanLabelSize:14, equipIconSize:28 }
+    };
+
+    function _getZoomPreset(zoom) {
+        if (zoom <= 15) return _ZOOM_STYLE_PRESETS[15];
+        if (zoom >= 21) return _ZOOM_STYLE_PRESETS[21];
+        return _ZOOM_STYLE_PRESETS[zoom] || _ZOOM_STYLE_PRESETS[16];
+    }
+
     var _STYLE_DEFAULTS = {
         opticalWeight: 3,
         coaxWeight: 2,
@@ -2578,6 +2609,26 @@
 
     // 전역 접근용
     window.getStyle = function(key) { return _styles[key]; };
+
+    // 줌 레벨 프리셋 적용 (window 함수 — zoomend에서 호출)
+    window.applyZoomPreset = function() {
+        if (!map) return;
+        var z = map.getZoom();
+        var preset = _getZoomPreset(z);
+        for (var k in preset) _styles[k] = preset[k];
+        // 패널 슬라이더 값도 갱신
+        var panel = document.getElementById('stylePanel');
+        if (panel) {
+            var sliders = panel.querySelectorAll('input[data-style]');
+            for (var i = 0; i < sliders.length; i++) {
+                var key = sliders[i].getAttribute('data-style');
+                sliders[i].value = _styles[key];
+                var valEl = document.getElementById('sv_' + key);
+                if (valEl) valEl.textContent = _styles[key];
+            }
+        }
+        _applyStyles();
+    };
 
     function _saveStyles() {
         try { localStorage.setItem('cableMapStyles', JSON.stringify(_styles)); } catch(e) {}
@@ -2613,9 +2664,10 @@
         _applyStyles();
     };
 
-    // 초기화
+    // 초기화 (현재 줌 레벨 프리셋으로)
     window.resetStyleDefaults = function() {
-        _styles = JSON.parse(JSON.stringify(_STYLE_DEFAULTS));
+        var z = (map && map.getZoom) ? map.getZoom() : 16;
+        _styles = JSON.parse(JSON.stringify(_getZoomPreset(z)));
         _saveStyles();
         var panel = document.getElementById('stylePanel');
         if (panel) {

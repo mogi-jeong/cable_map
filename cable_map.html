@@ -855,6 +855,14 @@
             pointer-events: none;
             cursor: default;
         }
+        /* 장비 이동 모드: 전주/라벨/장비 클릭 차단 */
+        body.moving-mode .span-label,
+        body.moving-mode .pole-label-visible,
+        body.moving-mode .custom-marker {
+            pointer-events: none !important;
+            cursor: crosshair !important;
+        }
+        body.moving-mode { cursor: crosshair !important; }
         body.hide-pole-labels .pole-label-visible { display: none !important; }
         body.hide-span-labels .span-label { display: none !important; }
 
@@ -1089,6 +1097,7 @@
 </head>
 <body>
     <div id="map"></div>
+    <div id="zoomInfo" style="position:fixed;bottom:28px;right:8px;background:rgba(255,255,255,0.85);border:1px solid #ccc;border-radius:4px;padding:2px 6px;font-size:11px;color:#333;pointer-events:none;z-index:1000;line-height:1.5;">Lv.- | S:-</div>
     
     <!-- ===== 1단: 상단 탭 바 ===== -->
     <div class="toolbar">
@@ -1582,7 +1591,7 @@
                 <div class="style-section-title">장비</div>
                 <div class="style-row">
                     <label>장비 아이콘</label>
-                    <input type="range" min="16" max="48" step="2" data-style="equipIconSize" oninput="onStyleChange(this)">
+                    <input type="range" min="12" max="48" step="2" data-style="equipIconSize" oninput="onStyleChange(this)">
                     <span class="style-val" id="sv_equipIconSize"></span>
                 </div>
             </div>

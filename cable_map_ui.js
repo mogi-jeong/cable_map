@@ -412,7 +412,7 @@
         // 반경 내 가장 가까운 전주
         function findNearestPoleR(lat, lng, radius) {
             const off = window._polePreviewOffset || { dLat: 0, dLng: 0 };
-            const poles = nodes.filter(n => n.type==='pole'||n.type==='pole_existing'||n.type==='pole_new'||n.type==='pole_removed');
+            const poles = nodes.filter(n => n.type==='pole'||n.type==='pole_existing'||n.type==='pole_new'||n.type==='pole_removed'||n.type==='pole_private');
             let best=null, bestDist=Infinity;
             poles.forEach(p => {
                 const d = distanceM(lat,lng,p.lat+off.dLat,p.lng+off.dLng);
@@ -1397,33 +1397,52 @@
         function startWaypointInsertMode(connection, path) {
             _waypointInsertConn = connection;
             _waypointInsertPath = path;
-            showStatus('📍 경유점 추가 모드 — 지도에서 추가할 위치를 클릭하세요 (ESC=취소)');
-            if (window._setMapCursorMode) window._setMapCursorMode('crosshair');
-            else document.body.style.cursor = 'crosshair';
+            showStatus('경로 추가 — 추가할 전주를 클릭하세요 (ESC=취소)');
+            document.body.classList.add('connecting-mode');
 
-            // 기존 핸들러 제거 후 새 등록
             if (_waypointMapClickHandler) {
-                if(_waypointClickListener){_nEvent.remove(map._m,'click',_waypointClickListener);_waypointClickListener=null;}
+                if (_waypointClickListener) { _nEvent.remove(map._m, 'click', _waypointClickListener); _waypointClickListener = null; }
             }
+
+            // 스냅 원 표시용
+            var _wpSnapCircle = null;
+            var _wpSnapMM = function(me) {
+                if (_wpSnapCircle) { _wpSnapCircle.setMap(null); _wpSnapCircle = null; }
+                var lat = me.coord.lat(), lng = me.coord.lng();
+                var pole = findNearestPoleR(lat, lng, 15);
+                _wpSnapCircle = new naver.maps.Circle({
+                    map: map._m, center: new naver.maps.LatLng(lat, lng), radius: 15,
+                    strokeWeight: 1, strokeColor: pole ? '#00cc44' : '#aaa', strokeOpacity: 0.8,
+                    fillColor: pole ? '#00cc44' : '#ccc', fillOpacity: 0.12
+                });
+            };
+            _nEvent.add(map._m, 'mousemove', _wpSnapMM);
+
             _waypointMapClickHandler = function(mouseEvent) {
-                const latlng = { lat: mouseEvent.coord.lat(), lng: mouseEvent.coord.lng() };
-                // 가장 가까운 구간 찾기
-                let minDist = Infinity, insertIndex = 0;
-                for (let i = 0; i < _waypointInsertPath.length - 1; i++) {
-                    const p1 = L.latLng(_waypointInsertPath[i][0], _waypointInsertPath[i][1]);
-                    const p2 = L.latLng(_waypointInsertPath[i + 1][0], _waypointInsertPath[i + 1][1]);
-                    const d = L.LineUtil.pointToSegmentDistance(
+                var lat = mouseEvent.coord.lat(), lng = mouseEvent.coord.lng();
+                var pole = findNearestPoleR(lat, lng, 15);
+                if (!pole) { showStatus('⚠ 전주 근처를 클릭하세요 (ESC=취소)'); return; }
+
+                var off = window._polePreviewOffset || { dLat: 0, dLng: 0 };
+                var latlng = { lat: pole.lat + off.dLat, lng: pole.lng + off.dLng, snappedPole: pole.id };
+
+                // 가장 가까운 구간에 삽입
+                var minDist = Infinity, insertIndex = 0;
+                for (var i = 0; i < _waypointInsertPath.length - 1; i++) {
+                    var p1 = L.latLng(_waypointInsertPath[i][0], _waypointInsertPath[i][1]);
+                    var p2 = L.latLng(_waypointInsertPath[i + 1][0], _waypointInsertPath[i + 1][1]);
+                    var d = L.LineUtil.pointToSegmentDistance(
                         map.latLngToLayerPoint(L.latLng(latlng.lat, latlng.lng)),
-                        map.latLngToLayerPoint(p1),
-                        map.latLngToLayerPoint(p2)
+                        map.latLngToLayerPoint(p1), map.latLngToLayerPoint(p2)
                     );
                     if (d < minDist) { minDist = d; insertIndex = i; }
                 }
                 _waypointInsertConn.waypoints.splice(insertIndex, 0, latlng);
-                saveData();
-                renderAllConnections();
+                saveData(); renderAllConnections();
+                if (_wpSnapCircle) { _wpSnapCircle.setMap(null); _wpSnapCircle = null; }
+                _nEvent.remove(map._m, 'mousemove', _wpSnapMM);
                 cancelWaypointInsertMode();
-                showStatus('📍 경유점이 추가되었습니다');
+                showStatus('경로가 추가되었습니다: ' + (pole.name || pole.id));
             };
             _nEvent.add(map._m, 'click', _waypointMapClickHandler);
             _waypointClickListener = _waypointMapClickHandler;
@@ -1431,20 +1450,65 @@
 
         function cancelWaypointInsertMode() {
             if (_waypointMapClickHandler) {
-                if(_waypointClickListener){_nEvent.remove(map._m,'click',_waypointClickListener);_waypointClickListener=null;}
+                if (_waypointClickListener) { _nEvent.remove(map._m, 'click', _waypointClickListener); _waypointClickListener = null; }
                 _waypointMapClickHandler = null;
             }
             _waypointInsertConn = null;
             _waypointInsertPath = null;
-            if (window._setMapCursorMode) window._setMapCursorMode('default');
-            else document.body.style.cursor = '';
+            document.body.classList.remove('connecting-mode');
         }
 
-        // ESC 키로 경유점 모드 취소
+        // ===== 경로 삭제 모드 =====
+        var _wpDeleteConn = null;
+        var _wpDeleteMarkers = [];
+
+        window.startWaypointDeleteModeById = function(connId) {
+            var conn = connections.find(function(c){ return c.id === connId; });
+            if (!conn || !conn.waypoints || conn.waypoints.length === 0) {
+                showStatus('⚠ 삭제할 경유 전주가 없습니다');
+                return;
+            }
+            _wpDeleteConn = conn;
+            _wpDeleteMarkers = [];
+            document.body.classList.add('connecting-mode');
+            showStatus('경로 삭제 — 제거할 전주(빨간 원)를 클릭하세요 (ESC=취소)');
+
+            conn.waypoints.forEach(function(wp, idx) {
+                var off = window._polePreviewOffset || { dLat: 0, dLng: 0 };
+                var pole = nodes.find(function(n){ return n.id === wp.snappedPole; });
+                var lat = wp.lat + (pole ? 0 : off.dLat);
+                var lng = wp.lng + (pole ? 0 : off.dLng);
+                var circle = new naver.maps.Circle({
+                    map: map._m,
+                    center: new naver.maps.LatLng(lat, lng),
+                    radius: 8,
+                    strokeWeight: 2, strokeColor: '#e53935', strokeOpacity: 1,
+                    fillColor: '#e53935', fillOpacity: 0.5,
+                    clickable: true
+                });
+                naver.maps.Event.addListener(circle, 'click', function() {
+                    _wpDeleteConn.waypoints.splice(idx, 1);
+                    saveData(); renderAllConnections();
+                    _cancelWpDeleteMode();
+                    var poleName = pole ? (pole.name || pole.id) : '경유점';
+                    showStatus('경로가 삭제되었습니다: ' + poleName);
+                });
+                _wpDeleteMarkers.push(circle);
+            });
+        };
+
+        function _cancelWpDeleteMode() {
+            _wpDeleteMarkers.forEach(function(c){ c.setMap(null); });
+            _wpDeleteMarkers = [];
+            _wpDeleteConn = null;
+            document.body.classList.remove('connecting-mode');
+        }
+
+        // ESC 키
         document.addEventListener('keydown', function(e) {
-            if ((e.key === 'Escape' || e.keyCode === 27) && _waypointInsertConn) {
-                cancelWaypointInsertMode();
-                showStatus('경유점 추가 취소');
+            if (e.key === 'Escape' || e.keyCode === 27) {
+                if (_waypointInsertConn) { cancelWaypointInsertMode(); showStatus('경로 추가 취소'); }
+                if (_wpDeleteConn) { _cancelWpDeleteMode(); showStatus('경로 삭제 취소'); }
             }
         });
 
@@ -1568,7 +1632,9 @@
         function startMovingNode() {
             closeMenuModal();
             movingNodeMode = true;
+            window.movingNodeMode = true;
             movingNode = selectedNode;
+            document.body.classList.add('moving-mode');
             var _isCoaxMoving = typeof isCoaxType === 'function' && isCoaxType(movingNode.type);
             var _moveSnapCircle = null;
             var _moveSnapHighlight = null;
@@ -1578,11 +1644,62 @@
                 ? '전주 근처를 클릭하여 장비를 이동하세요 (ESC=취소)'
                 : '지도를 클릭하여 장비를 이동하세요');
 
-            // 동축 장비: 마우스 이동 시 스냅 원 표시
+            // 장비 이동 시 마우스 근처 전주 10m 반경 표시 + 잔상 오버레이
+            var _poleMoveCircles = [];
+            var _ghostOverlay = null;
+
+            // 원본 마커 지도에서 제거 (이동 완료 후 renderNode로 복원)
+            if (markers[movingNode.id]) {
+                map.removeLayer(markers[movingNode.id]);
+                delete markers[movingNode.id];
+            }
+
+            // 잔상 오버레이 생성
+            var _ghostHTML = typeof getMarkerHTML === 'function'
+                ? getMarkerHTML(movingNode.type, movingNode.name, movingNode.memo, movingNode.id)
+                : '';
+            if (_ghostHTML) {
+                _ghostOverlay = document.createElement('div');
+                _ghostOverlay.style.cssText = 'position:fixed;opacity:0.5;pointer-events:none;z-index:9999;transform:translate(-50%,-50%);';
+                _ghostOverlay.innerHTML = _ghostHTML;
+                document.body.appendChild(_ghostOverlay);
+            }
+
+            // 마우스 픽셀 좌표로 잔상 이동 (map mousemove는 픽셀좌표도 제공)
+            function _onBodyMousemove(e) {
+                if (_ghostOverlay) {
+                    _ghostOverlay.style.left = e.clientX + 'px';
+                    _ghostOverlay.style.top  = e.clientY + 'px';
+                }
+            }
+            document.addEventListener('mousemove', _onBodyMousemove);
+
             function _onMoveMousemove(me) {
                 var lat = me.coord.lat(), lng = me.coord.lng();
                 if (_moveSnapCircle) { _moveSnapCircle.setMap(null); _moveSnapCircle = null; }
                 if (_moveSnapHighlight) { _moveSnapHighlight.setMap(null); _moveSnapHighlight = null; }
+                _poleMoveCircles.forEach(function(c){ c.setMap(null); });
+                _poleMoveCircles = [];
+
+                var _off = window._polePreviewOffset || { dLat: 0, dLng: 0 };
+                // 마우스 50m 반경 내 전주에 10m 원 표시
+                nodes.forEach(function(n) {
+                    if (!isPoleType(n.type)) return;
+                    var d = distanceM(lat, lng, n.lat + _off.dLat, n.lng + _off.dLng);
+                    if (d > 50) return;
+                    var isNear = d <= 10;
+                    _poleMoveCircles.push(new naver.maps.Circle({
+                        map: map._m,
+                        center: new naver.maps.LatLng(n.lat + _off.dLat, n.lng + _off.dLng),
+                        radius: 10,
+                        strokeWeight: 1.5,
+                        strokeColor: isNear ? '#00cc44' : '#1a6fd4',
+                        strokeOpacity: 0.9,
+                        fillColor: isNear ? '#00cc44' : '#1a6fd4',
+                        fillOpacity: isNear ? 0.15 : 0.07
+                    }));
+                });
+
                 if (!_isCoaxMoving) return;
                 var nearPole = findNearestPoleR(lat, lng, _moveSnapR);
                 _moveSnapCircle = new naver.maps.Circle({
@@ -1590,27 +1707,23 @@
                     strokeWeight: 1, strokeColor: nearPole ? '#00cc44' : '#aaaaaa', strokeOpacity: 0.8,
                     fillColor: nearPole ? '#00cc44' : '#cccccc', fillOpacity: 0.15
                 });
-                if (nearPole) {
-                    var _off = window._polePreviewOffset || { dLat: 0, dLng: 0 };
-                    _moveSnapHighlight = new naver.maps.Circle({
-                        map: map._m,
-                        center: new naver.maps.LatLng(nearPole.lat + _off.dLat, nearPole.lng + _off.dLng),
-                        radius: 3,
-                        strokeWeight: 2, strokeColor: '#00cc44', strokeOpacity: 1,
-                        fillColor: '#00cc44', fillOpacity: 0.5
-                    });
-                }
             }
 
             function _cleanupMoveSnap() {
                 if (_moveSnapCircle) { _moveSnapCircle.setMap(null); _moveSnapCircle = null; }
                 if (_moveSnapHighlight) { _moveSnapHighlight.setMap(null); _moveSnapHighlight = null; }
+                _poleMoveCircles.forEach(function(c){ c.setMap(null); });
+                _poleMoveCircles = [];
+                if (_ghostOverlay) { _ghostOverlay.remove(); _ghostOverlay = null; }
+                // 취소 시 원본 마커 복원
+                if (!markers[movingNode && movingNode.id]) {
+                    if (movingNode) renderNode(movingNode);
+                }
+                document.removeEventListener('mousemove', _onBodyMousemove);
                 _nEvent.remove(map._m, 'mousemove', _onMoveMousemove);
             }
 
-            if (_isCoaxMoving) {
-                _nEvent.add(map._m, 'mousemove', _onMoveMousemove);
-            }
+            _nEvent.add(map._m, 'mousemove', _onMoveMousemove);
 
             // 지도 클릭 이벤트 추가
             map.once('click', function(e) {
@@ -1625,7 +1738,9 @@
                         if (!newPole) {
                             showStatus('⚠ 전주 근처를 클릭해주세요');
                             movingNodeMode = false;
+                            window.movingNodeMode = false;
                             movingNode = null;
+                            document.body.classList.remove('moving-mode');
                             return;
                         }
                         movingNode.lat = clickLat;
@@ -1657,7 +1772,9 @@
                 }
 
                 movingNodeMode = false;
+                window.movingNodeMode = false;
                 movingNode = null;
+                document.body.classList.remove('moving-mode');
             });
         }
         
@@ -2017,6 +2134,8 @@
             var icoDoc = '<svg width="15" height="15" viewBox="0 0 20 20" fill="none"><rect x="3" y="1" width="14" height="18" rx="2" stroke="currentColor" stroke-width="1.8"/><line x1="6.5" y1="6" x2="13.5" y2="6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="6.5" y1="9.5" x2="13.5" y2="9.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="6.5" y1="13" x2="10.5" y2="13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
             var icoLabel = '<svg width="15" height="15" viewBox="0 0 20 20" fill="none"><path d="M3 4h10l4 6-4 6H3V4z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="13" cy="10" r="1.5" fill="currentColor"/></svg>';
             var icoSwitch = '<svg width="15" height="15" viewBox="0 0 20 20" fill="none"><path d="M4 7h9m0 0l-3-3m3 3l-3 3M16 13H7m0 0l3 3m-3-3l3-3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+            var icoAdd = '<svg width="15" height="15" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="8" stroke="currentColor" stroke-width="1.8"/><line x1="10" y1="6" x2="10" y2="14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><line x1="6" y1="10" x2="14" y2="10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
+            var icoRemove = '<svg width="15" height="15" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="8" stroke="currentColor" stroke-width="1.8"/><line x1="6" y1="10" x2="14" y2="10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
             var icoDel = '<svg width="13" height="13" viewBox="0 0 20 20" fill="none"><path d="M5 7h10l-1 10H6L5 7z" stroke="currentColor" stroke-width="1.5"/><path d="M3 5h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M8 3h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
 
             document.getElementById('cableInfoContent').innerHTML =
@@ -2037,6 +2156,8 @@
                   (connection.cableType !== 'coax' ? '<button onclick="' + _ci('generateApplication') + '" style="' + btnLight + '" onmouseover="this.style.background=\'#e2e8f0\'" onmouseout="this.style.background=\'#f0f4fa\'">' + icoDoc + '공가 신청서 생성</button>' : '') +
                   (connection.cableType !== 'coax' ? '<button onclick="' + _ci('openCablePoleLabelBatch') + '" style="' + btnLight + '" onmouseover="this.style.background=\'#e2e8f0\'" onmouseout="this.style.background=\'#f0f4fa\'">' + icoLabel + '전주 라벨 일괄조정</button>' : '') +
                   (connection.cableType !== 'coax' ? '<button onclick="' + _ci('toggleCableType') + '" style="' + btnLight + '" onmouseover="this.style.background=\'#e2e8f0\'" onmouseout="this.style.background=\'#f0f4fa\'">' + icoSwitch + '신설/기설 전환</button>' : '') +
+                  '<button onclick="startWaypointInsertModeById(\'' + cid + '\');closeCableInfoPanel();" style="' + btnLight + '" onmouseover="this.style.background=\'#e2e8f0\'" onmouseout="this.style.background=\'#f0f4fa\'">' + icoAdd + '경로 추가</button>' +
+                  '<button onclick="startWaypointDeleteModeById(\'' + cid + '\');closeCableInfoPanel();" style="' + btnLight + '" onmouseover="this.style.background=\'#e2e8f0\'" onmouseout="this.style.background=\'#f0f4fa\'">' + icoRemove + '경로 삭제</button>' +
                 '</div>' +
                 // 삭제 영역
                 '<div style="padding:4px 12px 10px;border-top:1px solid #f0f0f0;">' +
