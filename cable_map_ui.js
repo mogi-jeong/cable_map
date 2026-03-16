@@ -387,6 +387,7 @@
             // FROM 노드가 함체이면 출발 포트 먼저 선택
             if (selectedNode && selectedNode.type === 'junction' && window.showJunctionPortSelect) {
                 window.showJunctionPortSelect(selectedNode, 'from', function(portId) {
+                    console.log('[DBG] 포트 선택 콜백 실행 portId=', portId, 'connectingMode=', connectingMode);
                     window._pendingFromPort = portId;
                     _doStartConnecting();
                 });
@@ -396,6 +397,7 @@
         }
 
         function _doStartConnecting() {
+            console.log('[DBG] _doStartConnecting 시작, selectedNode=', selectedNode && selectedNode.id);
             connectingMode = true; window.connectingMode = true; document.body.classList.add('connecting-mode');
             connectingFromNode = selectedNode;
             pendingWaypoints = [];
@@ -410,7 +412,10 @@
             }
             map.off('click', onMapClickForWaypoint);
             // 현재 이벤트 사이클 이후 등록 — 팝업/메뉴 버튼 클릭이 즉시 waypoint로 처리되는 문제 방지
-            setTimeout(function() { map.on('click', onMapClickForWaypoint); }, 0);
+            setTimeout(function() {
+                console.log('[DBG] map click 핸들러 등록됨');
+                map.on('click', onMapClickForWaypoint);
+            }, 0);
             window._mousemoveHandler = onMapMousemoveForSnap;
             _nEvent.add(map._m, 'mousemove', onMapMousemoveForSnap);
         }
@@ -629,7 +634,9 @@
             if (!defaultOccupied) {
                 defaultBtn.onmouseover = function() { defaultBtn.style.opacity = '0.85'; };
                 defaultBtn.onmouseout  = function() { defaultBtn.style.opacity = '1'; };
-                defaultBtn.onclick = function() {
+                defaultBtn.onclick = function(e) {
+                    console.log('[DBG] 기본 포트 버튼 클릭 portId=', defaultPortId);
+                    e.stopPropagation();
                     popup.remove();
                     document.removeEventListener('keydown', escHandler);
                     callback && callback(defaultPortId);
@@ -828,11 +835,13 @@
 
         let _lastWaypointClick = 0;
         function onMapClickForWaypoint(e) {
+            console.log('[DBG] onMapClickForWaypoint 진입 connectingMode=', connectingMode, '_nodeJustClicked=', window._nodeJustClicked);
             if (!connectingMode || !connectingFromNode) return;
-            if (window._nodeJustClicked) return;
+            if (window._nodeJustClicked) { console.log('[DBG] _nodeJustClicked 차단'); return; }
             const _now = Date.now();
-            if (_now - _lastWaypointClick < 300) return;
+            if (_now - _lastWaypointClick < 300) { console.log('[DBG] 300ms 중복 차단'); return; }
             _lastWaypointClick = _now;
+            console.log('[DBG] waypoint 처리 lat=', e.latlng && e.latlng.lat);
             let lat = e.latlng.lat, lng = e.latlng.lng;
 
             // 이전 경유 라벨 제거
