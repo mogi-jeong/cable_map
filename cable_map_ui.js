@@ -400,7 +400,7 @@
             _nEvent.add(map._m, 'mousemove', onMapMousemoveForSnap);
         }
 
-        // ── 함체 포트 선택 팝업 ──
+        // ── 함체 포트 선택 팝업 (SVG 심볼 직접 클릭 방식) ──
         function showJunctionPortSelect(node, direction, callback) {
             var old = document.getElementById('junctionPortSelectPopup');
             if (old) old.remove();
@@ -409,68 +409,211 @@
             if (!JPORTS) { callback && callback(null); return; }
 
             var portConns = node.portConns || {};
+            var jAngle    = node.junctionAngle || 0;
+            var isNew     = node.isNew;
+            var fillColor   = isNew ? '#ffe8e8' : '#e8f0fe';
+            var strokeColor = isNew ? '#e53935' : '#1a6fd4';
+
+            // ── 팝업 컨테이너 ──
             var popup = document.createElement('div');
             popup.id = 'junctionPortSelectPopup';
+            popup.style.cssText =
+                'position:fixed;z-index:99999;background:white;border-radius:14px;' +
+                'box-shadow:0 6px 28px rgba(0,0,0,0.22);padding:14px 14px 12px;width:210px;' +
+                'font-family:"Segoe UI",sans-serif;user-select:none;';
 
             // 헤더
             var hdr = document.createElement('div');
-            hdr.style.cssText = 'font-size:12px;font-weight:700;color:#333;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;';
-            hdr.innerHTML = '<span>' + (direction === 'from' ? '출발 포트 선택' : '도착 포트 선택') + '</span>';
-            var xBtn = document.createElement('span');
-            xBtn.textContent = '✕';
-            xBtn.style.cssText = 'cursor:pointer;color:#888;font-size:14px;';
-            xBtn.onclick = function() { popup.remove(); };
-            hdr.appendChild(xBtn);
+            hdr.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;';
+            hdr.innerHTML =
+                '<span style="font-size:12px;font-weight:700;color:#333;">' +
+                    (direction === 'from' ? '출발 포트 선택' : '도착 포트 선택') +
+                '</span>' +
+                '<span id="jPortSelectClose" style="cursor:pointer;color:#aaa;font-size:15px;line-height:1;">✕</span>';
             popup.appendChild(hdr);
 
-            // 포트 그룹 순서: IN, OUT, BRL1~3, BRR1~3
-            var portOrder = ['IN','OUT','BRL1','BRL2','BRL3','BRR1','BRR2','BRR3'];
-            var grid = document.createElement('div');
-            grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:5px;';
+            // ── SVG 심볼 (160×160, viewBox 0 0 40 40 를 4배 확대) ──
+            var SZ = 160, SC = SZ / 40, CX = SZ / 2, CY = SZ / 2;
+            var NS = 'http://www.w3.org/2000/svg';
+            var svg = document.createElementNS(NS, 'svg');
+            svg.setAttribute('width', SZ);
+            svg.setAttribute('height', SZ);
+            svg.setAttribute('viewBox', '0 0 ' + SZ + ' ' + SZ);
+            svg.style.cssText = 'display:block;margin:0 auto 8px;';
 
-            portOrder.forEach(function(pid) {
-                var p = JPORTS[pid];
+            // 회전 그룹 (맵과 동일한 각도)
+            var gRot = document.createElementNS(NS, 'g');
+            gRot.setAttribute('transform', 'rotate(' + jAngle + ',' + CX + ',' + CY + ')');
+
+            // 배경 원
+            var bg = document.createElementNS(NS, 'circle');
+            bg.setAttribute('cx', CX); bg.setAttribute('cy', CY);
+            bg.setAttribute('r', 72);
+            bg.setAttribute('fill', fillColor);
+            bg.setAttribute('stroke', strokeColor);
+            bg.setAttribute('stroke-width', 3);
+            gRot.appendChild(bg);
+
+            // 나비넥타이 폴리곤 (원본 40px 기준 좌표 × 4)
+            var poly1 = document.createElementNS(NS, 'polygon');
+            poly1.setAttribute('points', '80,80 28,44 28,116');
+            poly1.setAttribute('fill', strokeColor);
+            gRot.appendChild(poly1);
+
+            var poly2 = document.createElementNS(NS, 'polygon');
+            poly2.setAttribute('points', '80,80 132,44 132,116');
+            poly2.setAttribute('fill', strokeColor);
+            gRot.appendChild(poly2);
+
+            // 중심 점
+            var dot = document.createElementNS(NS, 'circle');
+            dot.setAttribute('cx', CX); dot.setAttribute('cy', CY);
+            dot.setAttribute('r', 10);
+            dot.setAttribute('fill', 'white');
+            dot.setAttribute('stroke', strokeColor);
+            dot.setAttribute('stroke-width', 2);
+            gRot.appendChild(dot);
+
+            // ── 포트 원 ──
+            var PORT_DESC = {
+                IN:   '케이블 입력 (IN)',
+                OUT:  '케이블 출력 (OUT)',
+                BRL1: '분기 좌측 1 (BRL1)',
+                BRL2: '분기 좌측 2 (BRL2)',
+                BRL3: '분기 좌측 3 (BRL3)',
+                BRR1: '분기 우측 1 (BRR1)',
+                BRR2: '분기 우측 2 (BRR2)',
+                BRR3: '분기 우측 3 (BRR3)'
+            };
+            var hintEl = null; // 아래에서 생성 후 참조
+
+            Object.keys(JPORTS).forEach(function(pid) {
+                var p        = JPORTS[pid];
                 var occupied = !!portConns[pid];
-                var btn = document.createElement('button');
-                btn.textContent = (p.label === pid ? pid : pid) + (occupied ? ' (사용중)' : '');
-                var bc = p.color;
-                btn.style.cssText = 'padding:7px 6px;border:2px solid ' + bc + ';border-radius:6px;' +
-                    'background:' + (occupied ? '#f5f5f5' : '#fff') + ';color:' + (occupied ? '#aaa' : bc) + ';' +
-                    'font-size:11px;font-weight:700;cursor:' + (occupied ? 'not-allowed' : 'pointer') + ';';
+                var pc       = occupied ? '#bdbdbd' : p.color;
+                var px       = p.x * SC;   // 0-40 → 0-160
+                var py       = p.y * SC;
+                var vr       = (pid === 'IN' || pid === 'OUT') ? 9 : 7.5;
+                var hr       = vr + 5; // 히트 영역
+
+                // 시각 원
+                var vis = document.createElementNS(NS, 'circle');
+                vis.setAttribute('cx', px);
+                vis.setAttribute('cy', py);
+                vis.setAttribute('r', vr);
+                vis.setAttribute('fill', pc);
+                vis.setAttribute('stroke', occupied ? '#eee' : 'white');
+                vis.setAttribute('stroke-width', 2);
+                vis.style.transition = 'r 0.08s';
+                gRot.appendChild(vis);
+
+                // 라벨 (counter-rotate → 항상 수평 유지)
+                var lbl = document.createElementNS(NS, 'text');
+                lbl.setAttribute('x', px);
+                lbl.setAttribute('y', py);
+                lbl.setAttribute('text-anchor', 'middle');
+                lbl.setAttribute('dominant-baseline', 'central');
+                lbl.setAttribute('font-size', pid === 'IN' || pid === 'OUT' ? 8 : 7);
+                lbl.setAttribute('font-weight', '700');
+                lbl.setAttribute('fill', occupied ? '#999' : 'white');
+                lbl.setAttribute('pointer-events', 'none');
+                // 그룹 회전을 포트 중심에서 상쇄 → 텍스트는 항상 정립
+                lbl.setAttribute('transform', 'rotate(' + (-jAngle) + ',' + px + ',' + py + ')');
+                lbl.textContent = pid === 'BRL1' ? 'L1' : pid === 'BRL2' ? 'L2' : pid === 'BRL3' ? 'L3'
+                                : pid === 'BRR1' ? 'R1' : pid === 'BRR2' ? 'R2' : pid === 'BRR3' ? 'R3'
+                                : pid;
+                gRot.appendChild(lbl);
+
+                // 히트 영역 (투명, 클릭/호버 전용)
+                var hit = document.createElementNS(NS, 'circle');
+                hit.setAttribute('cx', px);
+                hit.setAttribute('cy', py);
+                hit.setAttribute('r', hr);
+                hit.setAttribute('fill', 'transparent');
+                hit.style.cursor = occupied ? 'not-allowed' : 'pointer';
+
                 if (!occupied) {
-                    btn.onmouseover = function() { btn.style.background = bc; btn.style.color = '#fff'; };
-                    btn.onmouseout = function() { btn.style.background = '#fff'; btn.style.color = bc; };
-                    btn.onclick = function() {
+                    hit.addEventListener('mouseenter', function() {
+                        vis.setAttribute('r', vr + 3);
+                        vis.setAttribute('fill', p.color);
+                        vis.setAttribute('stroke', p.color);
+                        if (hintEl) { hintEl.textContent = PORT_DESC[pid] || pid; hintEl.style.color = p.color; }
+                    });
+                    hit.addEventListener('mouseleave', function() {
+                        vis.setAttribute('r', vr);
+                        vis.setAttribute('fill', pc);
+                        vis.setAttribute('stroke', 'white');
+                        if (hintEl) { hintEl.textContent = '포트를 선택하세요'; hintEl.style.color = '#aaa'; }
+                    });
+                    hit.addEventListener('click', function(e) {
+                        e.stopPropagation();
                         popup.remove();
                         document.removeEventListener('keydown', escHandler);
                         callback && callback(pid);
-                    };
+                    });
+                } else {
+                    // 사용중 표시: 빗금 패턴
+                    var occ = document.createElementNS(NS, 'line');
+                    var r2 = vr * 0.6;
+                    occ.setAttribute('x1', px - r2); occ.setAttribute('y1', py - r2);
+                    occ.setAttribute('x2', px + r2); occ.setAttribute('y2', py + r2);
+                    occ.setAttribute('stroke', '#888'); occ.setAttribute('stroke-width', 1.5);
+                    occ.setAttribute('pointer-events', 'none');
+                    gRot.appendChild(occ);
+                    hit.addEventListener('mouseenter', function() {
+                        if (hintEl) { hintEl.textContent = (PORT_DESC[pid] || pid) + ' — 사용중'; hintEl.style.color = '#e53935'; }
+                    });
+                    hit.addEventListener('mouseleave', function() {
+                        if (hintEl) { hintEl.textContent = '포트를 선택하세요'; hintEl.style.color = '#aaa'; }
+                    });
                 }
-                grid.appendChild(btn);
+                gRot.appendChild(hit);
             });
-            popup.appendChild(grid);
+
+            svg.appendChild(gRot);
+            popup.appendChild(svg);
+
+            // 호버 힌트 텍스트
+            hintEl = document.createElement('div');
+            hintEl.style.cssText = 'text-align:center;font-size:11px;font-weight:600;color:#aaa;' +
+                'min-height:16px;margin-bottom:8px;transition:color 0.1s;';
+            hintEl.textContent = '포트를 선택하세요';
+            popup.appendChild(hintEl);
 
             // 포트 없이 연결 버튼
             var skipBtn = document.createElement('button');
             skipBtn.textContent = '포트 없이 연결';
-            skipBtn.style.cssText = 'width:100%;margin-top:8px;padding:6px 0;border:1px solid #ccc;border-radius:6px;' +
-                'background:#fff;color:#888;font-size:11px;font-weight:600;cursor:pointer;';
-            skipBtn.onclick = function() { popup.remove(); document.removeEventListener('keydown', escHandler); callback && callback(null); };
+            skipBtn.style.cssText = 'width:100%;padding:6px 0;border:1px solid #ddd;border-radius:7px;' +
+                'background:#fafafa;color:#999;font-size:11px;font-weight:600;cursor:pointer;';
+            skipBtn.onmouseover = function() { skipBtn.style.background = '#f0f0f0'; };
+            skipBtn.onmouseout  = function() { skipBtn.style.background = '#fafafa'; };
+            skipBtn.onclick = function() {
+                popup.remove();
+                document.removeEventListener('keydown', escHandler);
+                callback && callback(null);
+            };
             popup.appendChild(skipBtn);
 
-            // 노드 화면 위치 기준 표시
+            // 위치 설정
             var pt = map.latLngToLayerPoint({ lat: node.lat, lng: node.lng });
             var mapRect = map.getContainer().getBoundingClientRect();
             popup.style.left = (mapRect.left + pt.x + 22) + 'px';
-            popup.style.top  = (mapRect.top  + pt.y - 20) + 'px';
+            popup.style.top  = (mapRect.top  + pt.y - 30) + 'px';
 
             document.body.appendChild(popup);
+
+            document.getElementById('jPortSelectClose').onclick = function() {
+                popup.remove();
+                document.removeEventListener('keydown', escHandler);
+            };
 
             // 화면 밖 보정
             requestAnimationFrame(function() {
                 var r = popup.getBoundingClientRect();
-                if (r.right > window.innerWidth) popup.style.left = (window.innerWidth - r.width - 8) + 'px';
-                if (r.bottom > window.innerHeight) popup.style.top = (window.innerHeight - r.height - 8) + 'px';
+                if (r.right  > window.innerWidth)  popup.style.left = (window.innerWidth  - r.width  - 8) + 'px';
+                if (r.bottom > window.innerHeight)  popup.style.top  = (window.innerHeight - r.height - 8) + 'px';
+                if (r.left   < 8)                   popup.style.left = '8px';
+                if (r.top    < 8)                   popup.style.top  = '8px';
             });
 
             function escHandler(e) {
