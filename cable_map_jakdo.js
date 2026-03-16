@@ -14,6 +14,82 @@
 
 (function () {
 
+    // ══════════════════════════════════════════════
+    //  동축 설계 기준값 (출처: 운용기준 설정 및 자재사양 작성)
+    //  window.coaxStandards 로 전역 노출 → 동축 에이전트에서 참조
+    // ══════════════════════════════════════════════
+    window.coaxStandards = {
+
+        // ── 주파수 대역 (870MHz 시스템 기준) ──────────────
+        freq: {
+            forward: { high: 870, midAD: 550, low: 54 },   // MHz
+            reverse: { high: 42,  low: 5 }                  // MHz
+        },
+
+        // ── 이용자 단말 레벨 기준 (dBmV) ─────────────────
+        terminalLevel: {
+            forward: { hi: 5.0, mi: 4.8, lo: 4.5 },  // 하향 최소값
+            reverse: { hi: 51.0, lo: 51.0 }           // 상향 최대값
+        },
+
+        // ── 레벨 윈도우 허용범위 (dB) ─────────────────────
+        windowRange: {
+            forward: { plus: { hi: 6.0, mi: 5.4, lo: 4.5 },
+                       minus: { hi: 10.0, lo: 10.0 } },
+            slopeRange: { forward: 4.0, reverse: 10.0 },
+            crossOver:  { forward: 2.0 },
+            tapMargin:  { forward: 1.0, reverse: 1.0 }
+        },
+
+        // ── 증폭기 직열종속 단수 제한 ─────────────────────
+        // Cascade: ONU로부터의 증폭기 직열종속 단수
+        cascade: {
+            trunk:  { max: 1, expand: 2 },   // 간선 증폭부
+            feeder: { max: 1, expand: 1 }    // 분배선 분기증폭부
+        },
+
+        // ── 증폭기 조정 여유 이득 (dB) ───────────────────
+        reserveGain: {
+            forward: { min: 4.0, max: 20.0 },
+            reverse: { min: 3.0, max: 15.0 }
+        },
+
+        // ── AC 전류통과 제한율 (%) ────────────────────────
+        acBypassLimit: {
+            linePS:    { max: 60, expand: 70 },
+            onu:       { max: 60, expand: 70 },
+            amplifier: { max: 50, expand: 60 },
+            passive:   { max: 50, expand: 60 },
+            tap:       { max: 40, expand: 50 }
+        },
+
+        // ── 성능 한계치 (dBc) ─────────────────────────────
+        performanceLimit: {
+            forward: { cnr: 47, ctb: 55, cso: 60, xm: 50, ccn: 45 },
+            reverse: { cnr: 40, ctb: 51, cso: 51, xm: 45, ccn: 40 }
+        },
+
+        // ── 인입선 분배손실 기준표 (dB) ──────────────────
+        // Div: 인입분배수 (Dir=직결, 2D=2분배, 4D=4분배, 8D=8분배, 16D=16분배)
+        // F/Hi, F/Mi, F/Lo: 하향 고역/중역/저역
+        // R/Hi, R/Lo: 상향 고역/저역
+        inletLoss: {
+            '0D':  { fHi:  4.5, fMi:  4.0, fLo:  3.5, rHi:  3.5, rLo:  3.5 },
+            '2D':  { fHi:  8.5, fMi:  8.0, fLo:  7.0, rHi:  7.0, rLo:  7.0 },
+            '4D':  { fHi: 12.0, fMi: 11.5, fLo: 10.5, rHi: 10.5, rLo: 10.5 },
+            '8D':  { fHi: 13.5, fMi: 13.0, fLo: 12.0, rHi: 12.0, rLo: 12.0 },  // 추정값
+            '16D': { fHi: 16.0, fMi: 15.0, fLo: 14.0, rHi: 14.0, rLo: 14.0 }
+        },
+
+        // ── 동축 케이블 규격 기준 (기존 코드 메모리와 일치) ──
+        // AMP↔AMP: 12C, AMP→TAP: 7C, TAP→가입자: 5C
+        cableSpec: {
+            trunkLine:   '12C',   // 증폭기 ↔ 증폭기 간선
+            feederLine:  '7C',    // 증폭기 → 탭오프 분배선
+            dropLine:    '5C'     // 탭오프 → 가입자 인입선
+        }
+    };
+
     // ──────────────────────────────────────────────
     //  설정값 (나중에 동축 추가 시 coax 섹션만 수정)
     // ──────────────────────────────────────────────
