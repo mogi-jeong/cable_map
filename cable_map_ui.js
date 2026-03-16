@@ -414,6 +414,23 @@
             _nEvent.add(map._m, 'mousemove', onMapMousemoveForSnap);
         }
 
+        // ── 케이블 연장: 클릭 위치에서 가까운 끝점 노드를 FROM으로 연결 시작 ──
+        function extendCableFrom(connId, clickLat, clickLng) {
+            var conn = connections.find(function(c) { return c.id === connId; });
+            if (!conn) return;
+            var fromNode = nodes.find(function(n) { return n.id === connFrom(conn); });
+            var toNode   = nodes.find(function(n) { return n.id === connTo(conn); });
+            if (!fromNode || !toNode) return;
+
+            // 클릭 위치에서 더 가까운 끝점 선택
+            var dFrom = Math.pow(fromNode.lat - clickLat, 2) + Math.pow(fromNode.lng - clickLng, 2);
+            var dTo   = Math.pow(toNode.lat   - clickLat, 2) + Math.pow(toNode.lng   - clickLng, 2);
+            selectedNode = dFrom <= dTo ? fromNode : toNode;
+
+            startConnecting();
+        }
+        window.extendCableFrom = extendCableFrom;
+
         // ── 함체 포트 선택 팝업 (SVG 심볼 직접 클릭 방식) ──
         function showJunctionPortSelect(node, direction, callback) {
             var old = document.getElementById('junctionPortSelectPopup');
@@ -2480,6 +2497,18 @@
             });
             box.appendChild(btnRow);
 
+            // 연장 버튼
+            var extBtn = document.createElement('button');
+            extBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 20 20" fill="none" style="vertical-align:middle;margin-right:4px;"><path d="M10 3v14M3 10h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>케이블 연장';
+            extBtn.style.cssText = 'width:100%;padding:7px 10px;border:none;border-radius:6px;background:none;color:#1a6fd4;font-size:12px;cursor:pointer;text-align:center;transition:background 0.15s;';
+            extBtn.onmouseover = function() { extBtn.style.background = '#e8f0fe'; };
+            extBtn.onmouseout  = function() { extBtn.style.background = 'none'; };
+            extBtn.onclick = function() {
+                wrap.remove();
+                extendCableFrom(connId, e.latlng.lat, e.latlng.lng);
+            };
+            box.appendChild(extBtn);
+
             // 구분선
             var hr = document.createElement('div');
             hr.style.cssText = 'border-top:1px solid #eee;margin:2px 4px;';
@@ -2551,6 +2580,7 @@
                   (connection.cableType !== 'coax' ? '<button onclick="' + _ci('toggleCableType') + '" style="' + btnLight + '" onmouseover="this.style.background=\'#e2e8f0\'" onmouseout="this.style.background=\'#f0f4fa\'">' + icoSwitch + '신설/기설 전환</button>' : '') +
                   '<button onclick="startWaypointInsertModeById(\'' + cid + '\');closeCableInfoPanel();" style="' + btnLight + '" onmouseover="this.style.background=\'#e2e8f0\'" onmouseout="this.style.background=\'#f0f4fa\'">' + icoAdd + '경로 추가</button>' +
                   '<button onclick="startWaypointDeleteModeById(\'' + cid + '\');closeCableInfoPanel();" style="' + btnLight + '" onmouseover="this.style.background=\'#e2e8f0\'" onmouseout="this.style.background=\'#f0f4fa\'">' + icoRemove + '경로 삭제</button>' +
+                  '<button onclick="extendCableFrom(\'' + cid + '\',' + (e.latlng.lat) + ',' + (e.latlng.lng) + ');closeCableInfoPanel();" style="' + btnLight + '" onmouseover="this.style.background=\'#e2e8f0\'" onmouseout="this.style.background=\'#f0f4fa\'"><svg width="15" height="15" viewBox="0 0 20 20" fill="none"><path d="M10 3v14M3 10h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3 2"/></svg>케이블 연장</button>' +
                 '</div>' +
                 // 삭제 영역
                 '<div style="padding:4px 12px 10px;border-top:1px solid #f0f0f0;">' +
