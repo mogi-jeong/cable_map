@@ -807,12 +807,28 @@
                         }
                         _clearCoaxRouteLabel();
                         clearPreviewOnly();
-                        // 도착 장비가 함체이면 포트 선택 팝업 먼저
-                        if (nearJunction.type === 'junction' && window.showJunctionPortSelect) {
-                            window.showJunctionPortSelect(nearJunction, 'to', function(portId) {
-                                window._pendingToPort = portId;
+                        // 도착 장비가 함체이면 포트 자동결정 또는 선택 팝업
+                        if (nearJunction.type === 'junction') {
+                            // FROM 포트에 따라 기본 TO 포트 결정: OUT→IN, IN→OUT, null→IN
+                            var expectedTo = (window._pendingFromPort === 'IN') ? 'OUT' : 'IN';
+                            var toPortConns = nearJunction.portConns || {};
+                            // 실존 conn 검증
+                            var isOccupied = !!(toPortConns[expectedTo] &&
+                                connections.some(function(c) { return c.id === toPortConns[expectedTo]; }));
+                            if (!isOccupied) {
+                                // 기본 포트 비어있음 → 자동 연결
+                                window._pendingToPort = expectedTo;
                                 showConnectionModal();
-                            });
+                            } else if (window.showJunctionPortSelect) {
+                                // 기본 포트 사용중 → 수동 선택
+                                window.showJunctionPortSelect(nearJunction, 'to', function(portId) {
+                                    window._pendingToPort = portId;
+                                    showConnectionModal();
+                                });
+                            } else {
+                                window._pendingToPort = null;
+                                showConnectionModal();
+                            }
                         } else {
                             showConnectionModal();
                         }
@@ -1632,8 +1648,17 @@
             var toNodeId = conn ? connTo(conn) : null;
             var fromNodeId = conn ? connFrom(conn) : null;
             if (conn) {
-                // 함체 portConns 정리
+                // 함체 portConns 정리 (fromPort/toPort 경로)
                 _updateJunctionPortConns(conn, true);
+                // 보완: connId로 전체 노드 스캔하여 잔여 portConns 완전 제거
+                nodes.forEach(function(n) {
+                    if (n.type !== 'junction' || !n.portConns) return;
+                    var dirty = false;
+                    Object.keys(n.portConns).forEach(function(pid) {
+                        if (n.portConns[pid] === connectionId) { delete n.portConns[pid]; dirty = true; }
+                    });
+                    if (dirty && markers[n.id]) { markers[n.id].setMap(null); delete markers[n.id]; renderNode(n); }
+                });
 
                 // toNode 포트 초기화 + 하위 노드 연쇄 초기화
                 const toNode = nodes.find(n => n.id === toNodeId);

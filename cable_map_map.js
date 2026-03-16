@@ -629,7 +629,16 @@
                 const fillColor   = isNew ? '#ffe8e8' : '#e8f0fe';
                 const strokeColor = isNew ? '#e53935' : '#1a6fd4';
                 const jAngle = (node && node.junctionAngle) ? node.junctionAngle : 0;
-                const portConns = (node && node.portConns) ? node.portConns : {};
+                // portConns: 실제 존재하는 연결만 occupied로 간주 (삭제된 conn 참조 무시)
+                const portConns = {};
+                if (node && node.portConns) {
+                    Object.keys(node.portConns).forEach(function(pid) {
+                        var connId = node.portConns[pid];
+                        if (connections.some(function(c) { return c.id === connId; })) {
+                            portConns[pid] = connId;
+                        }
+                    });
+                }
                 // 포트 SVG circles 생성
                 var portSvg = '';
                 var JPORTS = window.JUNCTION_PORTS || {};
