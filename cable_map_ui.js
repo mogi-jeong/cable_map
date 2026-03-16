@@ -382,6 +382,20 @@
 
         function startConnecting() {
             closeMenuModal();
+            window._pendingFromPort = null;
+            window._pendingToPort   = null;
+            // FROM 노드가 함체이면 출발 포트 먼저 선택
+            if (selectedNode && selectedNode.type === 'junction' && window.showJunctionPortSelect) {
+                window.showJunctionPortSelect(selectedNode, 'from', function(portId) {
+                    window._pendingFromPort = portId;
+                    _doStartConnecting();
+                });
+            } else {
+                _doStartConnecting();
+            }
+        }
+
+        function _doStartConnecting() {
             connectingMode = true; window.connectingMode = true; document.body.classList.add('connecting-mode');
             connectingFromNode = selectedNode;
             pendingWaypoints = [];
@@ -579,6 +593,30 @@
                 'min-height:16px;margin-bottom:8px;transition:color 0.1s;';
             hintEl.textContent = '포트를 선택하세요';
             popup.appendChild(hintEl);
+
+            // 기본 포트 버튼 (FROM=OUT, TO=IN)
+            var defaultPortId = direction === 'from' ? 'OUT' : 'IN';
+            var defaultOccupied = !!portConns[defaultPortId];
+            var defaultColor = JPORTS[defaultPortId] ? JPORTS[defaultPortId].color : '#1a6fd4';
+            var defaultBtn = document.createElement('button');
+            defaultBtn.textContent = defaultOccupied
+                ? (defaultPortId + ' 포트 사용중 — 직접 선택')
+                : (defaultPortId + ' 포트 사용 (기본)');
+            defaultBtn.style.cssText = 'width:100%;padding:7px 0;margin-bottom:5px;border:2px solid ' +
+                (defaultOccupied ? '#ddd' : defaultColor) + ';border-radius:7px;' +
+                'background:' + (defaultOccupied ? '#f5f5f5' : defaultColor) + ';' +
+                'color:' + (defaultOccupied ? '#aaa' : 'white') + ';' +
+                'font-size:12px;font-weight:700;cursor:' + (defaultOccupied ? 'not-allowed' : 'pointer') + ';';
+            if (!defaultOccupied) {
+                defaultBtn.onmouseover = function() { defaultBtn.style.opacity = '0.85'; };
+                defaultBtn.onmouseout  = function() { defaultBtn.style.opacity = '1'; };
+                defaultBtn.onclick = function() {
+                    popup.remove();
+                    document.removeEventListener('keydown', escHandler);
+                    callback && callback(defaultPortId);
+                };
+            }
+            popup.appendChild(defaultBtn);
 
             // 포트 없이 연결 버튼
             var skipBtn = document.createElement('button');
