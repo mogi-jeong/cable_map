@@ -409,7 +409,8 @@
                 showStatus('경유점을 찍고 도착 장비를 클릭하세요 (Space=일시정지, ESC=취소)');
             }
             map.off('click', onMapClickForWaypoint);
-            map.on('click', onMapClickForWaypoint);
+            // 현재 이벤트 사이클 이후 등록 — 팝업/메뉴 버튼 클릭이 즉시 waypoint로 처리되는 문제 방지
+            setTimeout(function() { map.on('click', onMapClickForWaypoint); }, 0);
             window._mousemoveHandler = onMapMousemoveForSnap;
             _nEvent.add(map._m, 'mousemove', onMapMousemoveForSnap);
         }
@@ -448,6 +449,7 @@
             // ── 팝업 컨테이너 ──
             var popup = document.createElement('div');
             popup.id = 'junctionPortSelectPopup';
+            popup.addEventListener('click', function(e) { e.stopPropagation(); });
             popup.style.cssText =
                 'position:fixed;z-index:99999;background:white;border-radius:14px;' +
                 'box-shadow:0 6px 28px rgba(0,0,0,0.22);padding:14px 14px 12px;width:210px;' +
