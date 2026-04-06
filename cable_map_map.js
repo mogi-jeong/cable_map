@@ -225,6 +225,7 @@
                 renderAllNodes();
                 renderAllConnections();
                 initPoleCanvasEvents();
+                if (window._initCableSpacingUI) window._initCableSpacingUI();
 
                 // 2단계: 자동 전주 로드 (GitHub Pages — 버전 변경 시 재다운로드)
                 const _autoLoaded = await autoLoadPolesIfNeeded(function(phase, cur, tot) {
@@ -888,7 +889,7 @@
 
             // 케이블 연결 전주 필터용 ID 세트
             var _cablePoleIds = null;
-            if (_poleFilterActive) {
+            if (_poleFilterActive || window._gonggaPolyMode) {
                 _cablePoleIds = new Set();
                 connections.forEach(function(c) {
                     if (c.nodeA) _cablePoleIds.add(c.nodeA);
@@ -1045,6 +1046,8 @@
                     if (typeof _coaxBoundaryMode !== 'undefined' && _coaxBoundaryMode) return;
                     // 단, 동축 배치 모드에서는 전주 클릭 허용
                     if (window._tempDrawMode || window.connectingMode) return;
+                    // 공가 범위 선택 모드에서는 전주 클릭 차단
+                    if (window._gonggaPolyMode) return;
                     window._nodeJustClicked = true;
                     clearTimeout(window._nodeClickTimer);
                     window._nodeClickTimer = setTimeout(function(){ window._nodeJustClicked = false; }, 600);
@@ -1253,7 +1256,16 @@
                             }
                         },
                         node.name || '',
-                        '연결'
+                        '연결',
+                        function() {
+                            // 취소 → 경유점으로 저장 여부 재확인
+                            showConfirm(
+                                typeLabel + " '" + (_nodeTarget.name || '이름없음') + "'을 경유점으로 추가할까요?",
+                                function() { if (window.addEquipAsWaypoint) window.addEquipAsWaypoint(_nodeTarget); },
+                                '',
+                                '경유점 추가'
+                            );
+                        }
                     );
                 } else {
                     return; // 출발지와 같은 노드 재클릭 (이미 위에서 차단되지만 방어 코드)
@@ -1344,6 +1356,9 @@
                         </svg>
                     </div>
 
+                    <!-- 공가 경유 케이블 (동적 삽입) -->
+                    <div id="poleConnRoutesArea"></div>
+
                     <!-- 라벨 각도 -->
                     <div style="margin-bottom:12px;">
                         <label style="font-size:12px;color:#888;display:flex;justify-content:space-between;margin-bottom:6px;">
@@ -1377,6 +1392,139 @@
                         <button onclick="deletePole('${node.id}')" style="flex:1;padding:10px;background:#f44336;color:white;border:none;border-radius:8px;font-size:14px;cursor:pointer;">삭제</button>
                     </div>
                 </div>`;
+
+            // ── 공가 경유 케이블 표시 ──────────────────────────────
+            (function() {
+                var area = document.getElementById('poleConnRoutesArea');
+                if (!area) return;
+
+                function getPoleName(poleId) {
+                    var n = nodes.find(function(nd){ return nd.id === poleId; });
+                    return n ? (n.name || poleId) : '?';
+                }
+
+                // 이 전주를 경유하는 케이블 탐색
+                var _offPc = window._polePreviewOffset || { dLat: 0, dLng: 0 };
+                function _isEquipNearThisPole(eq) {
+                    if (!eq || isPoleType(eq.type)) return false;
+                    var dlat = (node.lat + _offPc.dLat - eq.lat) * 111000;
+                    var dlng = (node.lng + _offPc.dLng - eq.lng) * 111000 * Math.cos(eq.lat * Math.PI / 180);
+                    return dlat * dlat + dlng * dlng < 900; // 30m
+                }
+                var poleConns = connections.filter(function(conn) {
+                    // 1. 경유점에 이 전주 포함
+                    if ((conn.waypoints || []).some(function(wp){ return wp.snappedPole === node.id; })) return true;
+                    var fromN = nodes.find(function(n){ return n.id === connFrom(conn); });
+                    var toN   = nodes.find(function(n){ return n.id === connTo(conn); });
+                    // 2. from/to가 이 전주 자체
+                    if ((fromN && fromN.id === node.id && isPoleType(fromN.type)) ||
+                        (toN   && toN.id   === node.id && isPoleType(toN.type))) return true;
+                    // 3. from/to가 장비(함체/ONU 등)이고 이 전주 30m 이내
+                    return _isEquipNearThisPole(fromN) || _isEquipNearThisPole(toN);
+                });
+
+                if (poleConns.length === 0) return;
+
+                // stops 구성 헬퍼
+                function getConnStops(conn) {
+                    var stops = [];
+                    var _off2 = window._polePreviewOffset || { dLat: 0, dLng: 0 };
+                    function _addNdOrNear(nd) {
+                        if (!nd) return;
+                        if (isPoleType(nd.type)) {
+                            if (stops.indexOf(nd.id) === -1) stops.push(nd.id);
+                        } else {
+                            var best = null, bestD = Infinity;
+                            nodes.forEach(function(p) {
+                                if (!isPoleType(p.type)) return;
+                                var dlat = (p.lat + _off2.dLat - nd.lat) * 111000;
+                                var dlng = (p.lng + _off2.dLng - nd.lng) * 111000 * Math.cos(nd.lat * Math.PI / 180);
+                                var d2 = dlat * dlat + dlng * dlng;
+                                if (d2 < 900 && d2 < bestD) { bestD = d2; best = p; }
+                            });
+                            if (best && stops.indexOf(best.id) === -1) stops.push(best.id);
+                        }
+                    }
+                    var fromN = nodes.find(function(n){ return n.id === connFrom(conn); });
+                    var toN   = nodes.find(function(n){ return n.id === connTo(conn); });
+                    _addNdOrNear(fromN);
+                    (conn.waypoints || []).forEach(function(wp){
+                        if (wp.snappedPole && stops.indexOf(wp.snappedPole) === -1) stops.push(wp.snappedPole);
+                    });
+                    _addNdOrNear(toN);
+                    if (typeof window._poleNumSortKey === 'function') {
+                        stops.sort(function(a, b) {
+                            return window._poleNumSortKey(a, nodes) - window._poleNumSortKey(b, nodes);
+                        });
+                    }
+                    return stops;
+                }
+
+                // junction IN+OUT 병합: 근처 junction을 통해 연결된 케이블 쌍을 1행으로
+                var mergedConnIds = {};
+                var displayRows = [];
+
+                var nearJunctions = nodes.filter(function(nd) {
+                    return nd.type === 'junction' && _isEquipNearThisPole(nd);
+                });
+
+                nearJunctions.forEach(function(junc) {
+                    var inConn  = poleConns.find(function(c){ return connTo(c)   === junc.id; });
+                    var outConn = poleConns.find(function(c){ return connFrom(c) === junc.id; });
+                    if (inConn && outConn) {
+                        var inStops  = getConnStops(inConn);
+                        var outStops = getConnStops(outConn);
+                        var inIdx  = inStops.indexOf(node.id);
+                        var outIdx = outStops.indexOf(node.id);
+                        displayRows.push({
+                            prevId: inIdx  > 0                   ? inStops[inIdx - 1]   : null,
+                            nextId: outIdx < outStops.length - 1 ? outStops[outIdx + 1] : null,
+                            conn: inConn
+                        });
+                        mergedConnIds[inConn.id]  = true;
+                        mergedConnIds[outConn.id] = true;
+                    }
+                });
+
+                // 병합 안 된 나머지
+                poleConns.forEach(function(conn) {
+                    if (mergedConnIds[conn.id]) return;
+                    var stops = getConnStops(conn);
+                    var idx = stops.indexOf(node.id);
+                    displayRows.push({
+                        prevId: idx > 0              ? stops[idx - 1] : null,
+                        nextId: idx < stops.length-1 ? stops[idx + 1] : null,
+                        conn: conn
+                    });
+                });
+
+                var rowsHtml = displayRows.map(function(row, ci) {
+                    var prevName  = row.prevId ? getPoleName(row.prevId) : '—';
+                    var nextName  = row.nextId ? getPoleName(row.nextId) : '—';
+                    var cores     = row.conn.cores || '?';
+                    var typeLabel = row.conn.cableType === 'coax' ? '동축' : '광';
+                    var typeColor = row.conn.cableType === 'coax' ? '#e65100' : '#1565c0';
+
+                    return '<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;' +
+                           (ci > 0 ? 'border-top:1px solid #e8f5e9;' : '') + '">' +
+                           '<span style="font-size:12px;color:#333;">' +
+                           '<span style="color:#888;">' + prevName + '</span>' +
+                           '<span style="color:#aaa;margin:0 4px;">←</span>' +
+                           '<span style="font-weight:bold;color:#2e7d32;">현전주</span>' +
+                           '<span style="color:#aaa;margin:0 4px;">→</span>' +
+                           '<span style="color:#888;">' + nextName + '</span>' +
+                           '</span>' +
+                           '<span style="font-size:11px;font-weight:bold;color:' + typeColor + ';white-space:nowrap;margin-left:8px;">' +
+                           cores + ' ' + typeLabel + '</span>' +
+                           '</div>';
+                }).join('');
+
+                area.innerHTML =
+                    '<div style="margin-bottom:16px;padding:10px 12px;background:#f1f8f1;border-radius:8px;border:1px solid #c8e6c9;">' +
+                    '<div style="font-size:12px;color:#2e7d32;font-weight:bold;margin-bottom:6px;">공가 경유 케이블 (' + displayRows.length + '조)</div>' +
+                    rowsHtml +
+                    '</div>';
+            })();
 
             // 현재 선택된 타입 상태 저장 (저장 시 사용)
             window._currentPoleType = curType;
@@ -2869,6 +3017,24 @@
     var _rvClickListener = null;
     var _panorama = null;
     var _streetLayer = null;  // 로드뷰 가능 도로 하이라이트
+    var _rvPolesCache = {};   // 이동 중 누적된 전주 캐시 (id → node)
+
+    // 파노라마 현재 위치 주변 150m 전주를 IDB에서 로드해 캐시에 누적
+    function _loadRvPolesAround(lat, lng) {
+        if (typeof loadPolesInBounds !== 'function') {
+            _updatePoleOverlays();
+            return;
+        }
+        var dLat = 150 / 111320;
+        var dLng = 150 / (111320 * Math.cos(lat * Math.PI / 180));
+        loadPolesInBounds({
+            minLat: lat - dLat, maxLat: lat + dLat,
+            minLng: lng - dLng, maxLng: lng + dLng
+        }).then(function(poles) {
+            poles.forEach(function(p) { _rvPolesCache[p.id] = p; });
+            _updatePoleOverlays();
+        });
+    }
 
     // 1) 로드뷰 버튼 → 클릭 대기 모드 진입/해제
     window.toggleRoadView = function() {
@@ -2922,6 +3088,7 @@
         noData.style.display = 'none';
         container.style.display = 'block';
 
+        _rvPolesCache = {};  // 새 위치 진입 시 캐시 초기화
         var pos = new naver.maps.LatLng(lat, lng);
 
         // 조절 패널 표시
@@ -2940,12 +3107,18 @@
                 } else {
                     noData.style.display = 'none';
                     container.style.display = 'block';
-                    _updatePoleOverlays();
+                    var p = _panorama.getPosition();
+                    if (p) _loadRvPolesAround(p.lat(), p.lng());
+                    else _updatePoleOverlays();
                 }
             });
             // POV 변경 시 오버레이 갱신
             naver.maps.Event.addListener(_panorama, 'pov_changed', _updatePoleOverlays);
-            naver.maps.Event.addListener(_panorama, 'position_changed', _updatePoleOverlays);
+            // 위치 변경 시 주변 전주 IDB 로드 후 오버레이 갱신
+            naver.maps.Event.addListener(_panorama, 'position_changed', function() {
+                var pos = _panorama.getPosition();
+                if (pos) _loadRvPolesAround(pos.lat(), pos.lng());
+            });
         } else {
             _panorama.setPosition(pos);
             _updateRvPoleSelect();
@@ -2986,10 +3159,22 @@
         var panDeg = pov.pan || 0;
         var tiltDeg = pov.tilt || 0;
 
+        // nodes(뷰포트) + _rvPolesCache(이동 중 누적) 합산, 중복 제거
+        var _rvPoleMap = {};
+        for (var ni = 0; ni < nodes.length; ni++) {
+            if (nodes[ni].type && nodes[ni].type.indexOf('pole') !== -1)
+                _rvPoleMap[nodes[ni].id] = nodes[ni];
+        }
+        var _rvCacheKeys = Object.keys(_rvPolesCache);
+        for (var ci = 0; ci < _rvCacheKeys.length; ci++) {
+            _rvPoleMap[_rvCacheKeys[ci]] = _rvPolesCache[_rvCacheKeys[ci]];
+        }
+        var _rvPoleList = Object.keys(_rvPoleMap).map(function(k){ return _rvPoleMap[k]; });
+
         // 반경 100m 이내 전주 찾기
         var maxDist = 100;
-        for (var i = 0; i < nodes.length; i++) {
-            var node = nodes[i];
+        for (var i = 0; i < _rvPoleList.length; i++) {
+            var node = _rvPoleList[i];
             if (!node.type || node.type.indexOf('pole') === -1) continue;
 
             // 거리 계산 (미터) — 위치보정 오프셋 반영

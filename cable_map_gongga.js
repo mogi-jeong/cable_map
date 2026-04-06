@@ -44,18 +44,8 @@ function gonggaParsePoles(poleList, cableInfo) {
             .slice(0, 3);
         poles.push({ 관리구: 관리구, 번호: 번호, 선로명: 선로명, 선로번호: 선로번호, 전산화번호: 전산화번호, 케이블규격: 케이블규격, 통신선종류: 통신선종류, 장비목록: equipList });
     }
-    // 정렬 (sort_key)
-    poles.sort(function(a, b) {
-        var sa = String(a.선로번호), sb = String(b.선로번호);
-        var hasBrA = /[A-Za-z]/.test(sa), hasBrB = /[A-Za-z]/.test(sb);
-        var numsA = sa.match(/\d+/g) || [], numsB = sb.match(/\d+/g) || [];
-        var baseA = numsA.length ? parseInt(numsA[0]) : 0;
-        var baseB = numsB.length ? parseInt(numsB[0]) : 0;
-        if (baseA !== baseB) return baseA - baseB;
-        var brA = hasBrA ? 0 : 1, brB = hasBrB ? 0 : 1;
-        if (brA !== brB) return brA - brB;
-        return sa < sb ? -1 : sa > sb ? 1 : 0;
-    });
+    // 정렬하지 않음 — 입력 순서(waypoint 경로 순서)를 그대로 유지
+    // H주(7H)는 실제 현장 경로 기준으로 앞뒤가 결정되므로 번호 정렬로 강제하지 않음
     return poles;
 }
 
@@ -399,4 +389,266 @@ function gonggaBuildApplication(poles, invs, fromNode, toNode) {
     if (정비_신설.length > 0) msgs.push('정비 ' + 정비_신설.length + '행');
     if (정비_해제.length > 0) msgs.push('해지 ' + 정비_해제.length + '행');
     showStatus('공가 신청서 생성 완료 — ' + (msgs.length ? msgs.join(', ') : '데이터 없음'));
+}
+
+// ── AI 에이전트 결과 → 신청서 빌드 ──────────────────────────────────────────
+// Claude가 결정한 rows[] (1차/2차 전주 명시)를 받아 XLSX 생성
+// gonggaBuildApplication과 동일한 Excel 구조 사용
+
+function gonggaBuildFromAIRows(aiRows, invs) {
+    var defaults = { 설치단: '2', 사업자: 'A000042286', 용도: '4', 통신선: 'O', 규격: '12' };
+
+    var NCOLS = 34;
+    var HEADER_ROW3 = [
+        '','',
+        '현전주','현전주','현전주','현전주',
+        '1차전주','1차전주','1차전주','1차전주',
+        '2차전주','2차전주','2차전주','2차전주',
+        '통신케이블','통신케이블','통신케이블','통신케이블','통신케이블',
+        '통신케이블','통신케이블','통신케이블','통신케이블','통신케이블',
+        '통신기기1','통신기기1','통신기기1',
+        '통신기기2','통신기기2','통신기기2',
+        '통신기기3','통신기기3','통신기기3',
+        ''
+    ];
+    var HEADER_ROW4 = [
+        '','',
+        '선로명','선로번호','관리구','번호',
+        '선로명','선로번호','관리구','번호',
+        '선로명','선로번호','관리구','번호',
+        '설치단','사업자','설치일자','케이블번호','용도',
+        '통신선종류','규격','승인코드','고객공급선종류','봉인번호',
+        '기기코드','사업자','관리번호',
+        '기기코드','사업자','관리번호',
+        '기기코드','사업자','관리번호',
+        ''
+    ];
+    var C = {
+        순번:0, 접수구분:1,
+        현선로명:2, 현선로번호:3, 현관리구:4, 현번호:5,
+        '1차선로명':6, '1차선로번호':7, '1차관리구':8, '1차번호':9,
+        '2차선로명':10, '2차선로번호':11, '2차관리구':12, '2차번호':13,
+        설치단:14, 사업자:15, 설치일자:16, 케이블번호:17,
+        용도:18, 통선선종류:19, 규격:20, 승인코드:21,
+        고객공급선종류:22, 봉인번호:23,
+        '기기1코드':24, '기기1사업자':25, '기기1관리번호':26,
+        '기기2코드':27, '기기2사업자':28, '기기2관리번호':29,
+        '기기3코드':30, '기기3사업자':31, '기기3관리번호':32,
+        비고:33
+    };
+    var COL_WIDTHS = [6,7, 9,8,8,5, 9,8,8,5, 9,8,8,5, 5,13,11,18,5, 5,5,7,7,8, 7,7,7, 7,7,7, 7,7,7, 20];
+
+    // 장표 행 → 접수3 (해지)
+    function invsToRow3(r, seq) {
+        var row = new Array(NCOLS).fill('');
+        row[C.순번] = seq;
+        row[C.접수구분] = '3';
+        row[C.현선로명]    = _gongga_v(r['현전주 선로명']);
+        row[C.현선로번호]  = _gongga_v(r['현전주 선로번호']);
+        row[C.현관리구]    = _gongga_v(r['현전주 관리구']);
+        row[C.현번호]      = _gongga_v(r['현전주 번호']);
+        row[C['1차선로명']]  = _gongga_v(r['1차전주 선로명']);
+        row[C['1차선로번호']]= _gongga_v(r['1차전주 선로번호']);
+        row[C['1차관리구']]  = _gongga_v(r['1차전주 관리구']);
+        row[C['1차번호']]    = _gongga_v(r['1차전주 번호']);
+        row[C['2차선로명']]  = _gongga_v(r['2차전주 선로명']);
+        row[C['2차선로번호']]= _gongga_v(r['2차전주 선로번호']);
+        row[C['2차관리구']]  = _gongga_v(r['2차전주 관리구']);
+        row[C['2차번호']]    = _gongga_v(r['2차전주 번호']);
+        row[C.설치단]      = _gongga_v(r['설치단']);
+        row[C.사업자]      = _gongga_v(r['사업자']);
+        row[C.설치일자]    = _gongga_v(r['설치일자']);
+        row[C.케이블번호]  = _gongga_v(r['케이블번호']);
+        row[C.용도]        = _gongga_v(r['용도']);
+        row[C.통선선종류]  = _gongga_v(r['통신선종류']);
+        row[C.규격]        = _gongga_v(r['규격']);
+        row[C.승인코드]    = _gongga_v(r['승인코드']);
+        return row;
+    }
+
+    // AI row → 접수2 (신설) — Claude가 결정한 1차/2차 전주를 그대로 사용
+    function aiRowToExcel2(aiRow, seq, invsRow) {
+        var row = new Array(NCOLS).fill('');
+        row[C.순번] = seq;
+        row[C.접수구분] = '2';
+
+        var curr = aiRow.현전주 || {};
+        row[C.현선로명]   = curr.선로명   || '';
+        row[C.현선로번호] = curr.선로번호 || '';
+        row[C.현관리구]   = curr.관리구   || '';
+        row[C.현번호]     = curr.번호     || '';
+
+        var prev = aiRow['1차전주'] || {};
+        if (prev.관리구 && prev.관리구 !== '99999') {
+            row[C['1차선로명']]   = prev.선로명   || '';
+            row[C['1차선로번호']] = prev.선로번호 || '';
+            row[C['1차관리구']]   = prev.관리구   || '';
+            row[C['1차번호']]     = prev.번호     || '';
+        } else {
+            row[C['1차관리구']] = '99999'; row[C['1차번호']] = '999';
+        }
+
+        var nxt = aiRow['2차전주'] || {};
+        if (nxt.관리구 && nxt.관리구 !== '99999') {
+            row[C['2차선로명']]   = nxt.선로명   || '';
+            row[C['2차선로번호']] = nxt.선로번호 || '';
+            row[C['2차관리구']]   = nxt.관리구   || '';
+            row[C['2차번호']]     = nxt.번호     || '';
+        } else {
+            row[C['2차관리구']] = '99999'; row[C['2차번호']] = '999';
+        }
+
+        row[C.설치단]     = defaults.설치단;
+        row[C.사업자]     = defaults.사업자;
+        row[C.용도]       = defaults.용도;
+        row[C.통선선종류] = aiRow.통신선종류 || defaults.통신선;
+        row[C.규격]       = invsRow ? _gongga_v(invsRow['규격']) : (String(aiRow.케이블규격 || defaults.규격));
+
+        var equips = aiRow.장비목록 || [];
+        for (var ei = 0; ei < equips.length && ei < 3; ei++) {
+            row[C['기기' + (ei + 1) + '코드']]    = equips[ei].기기코드 || '';
+            row[C['기기' + (ei + 1) + '사업자']]  = defaults.사업자;
+            row[C['기기' + (ei + 1) + '관리번호']]= equips[ei].관리번호 || '';
+        }
+        row[C.비고] = aiRow.비고 || '';
+        return row;
+    }
+
+    // invs 조회 헬퍼 (전산화번호 → 선로명|선로번호 폴백)
+    function lookupInvs(aiRow) {
+        var curr = aiRow.현전주 || {};
+        var 전산화번호 = curr.전산화번호 ||
+            (curr.관리구 && curr.번호
+                ? (curr.관리구 + String(parseInt(curr.번호) || 0).padStart(3, '0')).toUpperCase()
+                : '');
+        var rows = invs.byId[전산화번호];
+        if (!rows) {
+            var nk = (curr.선로명 || '') + '|' + (curr.선로번호 || '');
+            rows = invs.byName[nk];
+        }
+        return rows || null;
+    }
+
+    // 분류
+    var 신규 = [], 정비_신설 = [], 정비_해제 = [];
+    var 신규_seq = 1, 정비신설_seq = 1, 정비해제_seq = 1;
+
+    aiRows.forEach(function (aiRow) {
+        var invsRows = lookupInvs(aiRow);
+        if (invsRows) {
+            // 정비: 광(O) 행 규격 참조
+            var optRow = null;
+            for (var j = 0; j < invsRows.length; j++) {
+                if (String(_gongga_v(invsRows[j]['통신선종류'])).toUpperCase() === 'O') { optRow = invsRows[j]; break; }
+            }
+            정비_신설.push(aiRowToExcel2(aiRow, 정비신설_seq, optRow));
+            정비신설_seq++;
+            invsRows.forEach(function (ir) {
+                정비_해제.push(invsToRow3(ir, 정비해제_seq));
+                정비해제_seq++;
+            });
+        } else {
+            신규.push(aiRowToExcel2(aiRow, 신규_seq, null));
+            신규_seq++;
+        }
+    });
+
+    // ── 공통 Excel 생성 (gonggaBuildApplication과 동일 구조) ──
+
+    function countBonJo(dataRows) {
+        var poleKeys = new Set();
+        dataRows.forEach(function (r) { poleKeys.add(r[C.현선로명] + '-' + r[C.현선로번호]); });
+        return { bon: poleKeys.size, jo: dataRows.length };
+    }
+
+    function makeRangeName(dataRows) {
+        if (dataRows.length === 0) return '';
+        var first = dataRows[0], last = dataRows[dataRows.length - 1];
+        var fn = first[C.현선로명], fn2 = first[C.현선로번호];
+        var ln = last[C.현선로명],  ln2 = last[C.현선로번호];
+        return fn === ln ? fn + fn2 + '-' + ln2 : fn + fn2 + '-' + ln + ln2;
+    }
+
+    function buildSheet(dataRows, sheetTitle) {
+        var aoa = [];
+        var titleRow = new Array(NCOLS).fill('');
+        titleRow[0] = sheetTitle || '공가 가공설비 시설계획서';
+        aoa.push(titleRow);
+        aoa.push(new Array(NCOLS).fill(''));
+        var row3 = HEADER_ROW3.slice();
+        row3[0] = '순번'; row3[1] = '접수구분'; row3[33] = '비고';
+        aoa.push(row3);
+        aoa.push(HEADER_ROW4);
+        dataRows.forEach(function (item) {
+            if (Array.isArray(item)) {
+                aoa.push(item);
+            } else if (item.type === 'sep') {
+                var sepRow = new Array(NCOLS).fill('');
+                sepRow[0] = '\u25b6  ' + item.label;
+                aoa.push(sepRow);
+            } else {
+                aoa.push(item.data);
+            }
+        });
+        var ws = XLSX.utils.aoa_to_sheet(aoa);
+        var merges = [
+            { s:{r:0,c:0}, e:{r:0,c:NCOLS-1} },
+            { s:{r:2,c:0}, e:{r:3,c:0} },
+            { s:{r:2,c:1}, e:{r:3,c:1} },
+            { s:{r:2,c:2}, e:{r:2,c:5} },
+            { s:{r:2,c:6}, e:{r:2,c:9} },
+            { s:{r:2,c:10},e:{r:2,c:13} },
+            { s:{r:2,c:14},e:{r:2,c:23} },
+            { s:{r:2,c:24},e:{r:2,c:26} },
+            { s:{r:2,c:27},e:{r:2,c:29} },
+            { s:{r:2,c:30},e:{r:2,c:32} },
+            { s:{r:2,c:33},e:{r:3,c:33} }
+        ];
+        var rowIdx = 4;
+        dataRows.forEach(function (item) {
+            if (!Array.isArray(item) && item.type === 'sep') merges.push({ s:{r:rowIdx,c:0}, e:{r:rowIdx,c:NCOLS-1} });
+            rowIdx++;
+        });
+        ws['!merges'] = merges;
+        ws['!cols'] = COL_WIDTHS.map(function (w) { return { wch: w }; });
+        return ws;
+    }
+
+    var today   = new Date();
+    var dateStr = String(today.getFullYear()).slice(2) +
+                  String(today.getMonth() + 1).padStart(2, '0') +
+                  String(today.getDate()).padStart(2, '0');
+
+    if (신규.length > 0) {
+        var nWb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(nWb, buildSheet(신규, '공가 가공설비 시설계획서 (신규)'), '시설계획서_신규');
+        var nInfo = countBonJo(신규);
+        XLSX.writeFile(nWb, dateStr + '_LGHV_공가신규_' + makeRangeName(신규) + '_' + nInfo.bon + '본' + nInfo.jo + '조.xlsx');
+    }
+
+    if (정비_신설.length > 0) {
+        var 정비data = [];
+        정비data.push({ type: 'sep', label: '해제  (접수구분 3)' });
+        정비_해제.forEach(function (r) { 정비data.push({ type: 'row3', data: r }); });
+        정비data.push({ type: 'sep', label: '신설  (접수구분 2)' });
+        정비_신설.forEach(function (r) { 정비data.push({ type: 'row2', data: r }); });
+
+        var jWb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(jWb, buildSheet(정비data, '공가 가공설비 시설계획서 (정비)'), '시설계획서_정비');
+        var jInfo = countBonJo(정비_신설);
+        XLSX.writeFile(jWb, dateStr + '_LGHV_공가정비_' + makeRangeName(정비_신설) + '_' + jInfo.bon + '본' + jInfo.jo + '조.xlsx');
+    }
+
+    if (정비_해제.length > 0 && 정비_신설.length === 0) {
+        var hWb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(hWb, buildSheet(정비_해제, '공가 가공설비 시설계획서 (해지)'), '시설계획서_해지');
+        var hInfo = countBonJo(정비_해제);
+        XLSX.writeFile(hWb, dateStr + '_LGHV_공가해지_' + makeRangeName(정비_해제) + '_' + hInfo.bon + '본' + hInfo.jo + '조.xlsx');
+    }
+
+    var msgs = [];
+    if (신규.length > 0) msgs.push('신규 ' + 신규.length + '행');
+    if (정비_신설.length > 0) msgs.push('정비 ' + 정비_신설.length + '행');
+    if (정비_해제.length > 0) msgs.push('해지 ' + 정비_해제.length + '행');
+    showStatus('공가 신청서 생성 완료 (AI) — ' + (msgs.length ? msgs.join(', ') : '데이터 없음'));
 }

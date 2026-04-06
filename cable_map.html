@@ -390,6 +390,16 @@
             0%,100% { opacity: 1; }
             50% { opacity: 0.7; }
         }
+        /* 공가 범위 추출 모드 */
+        body.gongga-poly-mode #map { cursor: crosshair !important; }
+        .gongga-guide {
+            display: none; position: fixed; top: 50px; left: 50%; transform: translateX(-50%);
+            z-index: 5000; background: #e67e22; color: white;
+            padding: 10px 24px; border-radius: 20px; font-size: 13px; font-weight: 700;
+            box-shadow: 0 4px 16px rgba(230,126,34,0.4); pointer-events: none;
+            white-space: nowrap;
+        }
+        .gongga-guide.active { display: block; }
         
         .btn {
             display: block;
@@ -1168,6 +1178,18 @@
             </svg>
             표시
         </button>
+        <button class="tab-btn" id="gonggaRangeBtn" onclick="startGonggaRangeMode()" title="범위를 지정해 공가 신청서 추출" style="color:#e67e22;">
+            <svg width="16" height="16" viewBox="0 0 40 40" fill="none">
+                <polygon points="20,4 36,14 36,30 20,36 4,26 4,10" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round" fill="currentColor" fill-opacity="0.12"/>
+                <circle cx="20" cy="4"  r="2.5" fill="currentColor"/>
+                <circle cx="36" cy="14" r="2.5" fill="currentColor"/>
+                <circle cx="36" cy="30" r="2.5" fill="currentColor"/>
+                <circle cx="20" cy="36" r="2.5" fill="currentColor"/>
+                <circle cx="4"  cy="26" r="2.5" fill="currentColor"/>
+                <circle cx="4"  cy="10" r="2.5" fill="currentColor"/>
+            </svg>
+            공가
+        </button>
         <button class="tab-btn" data-tab="settings" onclick="switchTab('settings')">
             <svg width="16" height="16" viewBox="0 0 40 40" fill="none">
                 <circle cx="20" cy="20" r="7" stroke="currentColor" stroke-width="2.5"/>
@@ -1411,6 +1433,14 @@
                 </svg>
                 <span class="tb-label">셀숨김</span>
             </button>
+            <div class="toolbar-divider"></div>
+            <div style="display:flex;flex-direction:column;align-items:center;gap:1px;padding:0 4px;" data-tip="병렬 케이블 간격 조정">
+                <span style="font-size:10px;color:#555;white-space:nowrap;">간격</span>
+                <input type="range" id="cableSpacingSlider" min="1" max="20" step="1" value="6"
+                    style="width:64px;height:14px;cursor:pointer;accent-color:#2980b9;"
+                    oninput="setCableSpacing(this.value)">
+                <span id="cableSpacingVal" style="font-size:10px;color:#2980b9;font-weight:bold;">6m</span>
+            </div>
             <button class="tb-btn" id="legendBtn" onclick="toggleLegend()" data-tip="범례 표시/숨기기">
                 <svg width="22" height="22" viewBox="0 0 40 40">
                     <rect x="4" y="4" width="32" height="32" rx="4" fill="#f5f5f5" stroke="#666" stroke-width="2"/>
@@ -1513,6 +1543,7 @@
 
     <!-- 로드뷰 클릭 안내 -->
     <div class="rv-guide" id="rvGuide">지도에서 로드뷰를 볼 위치를 클릭하세요 (ESC: 취소)</div>
+    <div class="gongga-guide" id="gonggaGuide">클릭으로 꼭지점 추가 | Enter 또는 첫점 클릭으로 완성 | ESC: 취소</div>
     <!-- 로드뷰 전체화면 -->
     <div class="roadview-panel" id="roadviewPanel">
         <button class="rv-close" onclick="closeRoadView()" title="로드뷰 닫기 (ESC)">&times;</button>
@@ -2044,6 +2075,7 @@
     <script src="cable_map_map.js"></script>
     <script src="cable_map_ofd.js"></script>
     <script src="cable_map_gongga.js"></script>
+    <script src="cable_map_gongga_agent.js"></script>
     <script src="cable_map_coax.js"></script>
     <script src="cable_map_ui.js"></script>
     <script src="cable_map_wiremap.js"></script>

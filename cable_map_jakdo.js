@@ -437,41 +437,6 @@
         }
         _tryHookCoax();
 
-        // 케이블 정보 패널에 버튼 주입 (showCableInfoPanel 후킹)
-        var _origShowCableInfo = window.showCableInfoPanel;
-        if (typeof _origShowCableInfo === 'function') {
-            window.showCableInfoPanel = function (connId, fromNode, toNode, connection, e) {
-                _origShowCableInfo(connId, fromNode, toNode, connection, e);
-
-                // 패널 DOM이 생성된 직후 버튼 추가
-                setTimeout(function () {
-                    var panel = document.getElementById('cableInfoPanel');
-                    if (!panel) return;
-                    if (panel.querySelector('.autoroute-btn')) return; // 중복 방지
-
-                    var btn = document.createElement('button');
-                    btn.className = 'autoroute-btn';
-                    btn.textContent = '🔄 작도 재계산';
-                    btn.style.cssText = [
-                        'width:100%',
-                        'margin-top:8px',
-                        'padding:9px 0',
-                        'background:#1a6fd4',
-                        'color:white',
-                        'border:none',
-                        'border-radius:8px',
-                        'font-size:13px',
-                        'font-weight:bold',
-                        'cursor:pointer'
-                    ].join(';');
-                    btn.addEventListener('click', function () {
-                        autoRouteSingle(connId);
-                    });
-                    panel.appendChild(btn);
-                }, 50);
-            };
-        }
-
         // 메뉴 모달에 "전체 작도" 버튼 추가
         var menuModal = document.getElementById('menuModal');
         if (menuModal) {
@@ -502,6 +467,13 @@
                 );
             });
             menuModal.appendChild(allBtn);
+
+            // 전주 모달로 열릴 때 버튼 숨기기 (MutationObserver)
+            new MutationObserver(function () {
+                var title = document.getElementById('menuModalTitle');
+                var isPole = title && title.textContent.trim().startsWith('전주 정보');
+                allBtn.style.display = (menuModal.classList.contains('active') && !isPole) ? 'block' : 'none';
+            }).observe(menuModal, { attributes: true, attributeFilter: ['class'] });
         }
     }
 
