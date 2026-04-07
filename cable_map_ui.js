@@ -742,8 +742,10 @@
             nodeIds.forEach(function(nid) {
                 var n = nodes.find(function(x) { return x.id === nid; });
                 if (!n || n.type !== 'junction') return;
-                if (n.junctionAngleSet) return;  // 이미 1회 설정됨 → 스킵
-                n.junctionAngle = Math.round(window.calcJunctionAutoAngle(n));
+                // 케이블 연결/삭제 시 항상 재계산 (IN-함체-OUT 직선 정렬)
+                var newAngle = Math.round(window.calcJunctionAutoAngle(n));
+                if (n.junctionAngle === newAngle && n.junctionAngleSet) return; // 변경 없으면 스킵
+                n.junctionAngle = newAngle;
                 n.junctionAngleSet = true;
                 var idx = nodes.findIndex(function(x) { return x.id === n.id; });
                 if (idx !== -1) nodes[idx] = n;
@@ -830,6 +832,8 @@
         // 전주 마커 직접 클릭 시 경유점으로 추가 (map.js onNodeClick에서 호출)
         function addPoleAsWaypoint(node) {
             if (!connectingMode || !connectingFromNode) return;
+            // 마커 클릭 처리 완료 → 다음 맵 클릭 즉시 허용
+            window._nodeJustClicked = false;
             // 같은 전주에 이미 경유점이 있으면 무시
             if (pendingWaypoints.some(function(wp) { return wp.snappedPole === node.id; })) {
                 showStatus('⚠ 이미 경유된 전주입니다: ' + (node.name || node.id));
@@ -847,6 +851,7 @@
         // 장비가 전주에 스냅돼 있으면 전주 위치를 경유점으로 사용
         function addEquipAsWaypoint(node) {
             if (!connectingMode || !connectingFromNode) return;
+            window._nodeJustClicked = false;
             var _off = window._polePreviewOffset || { dLat: 0, dLng: 0 };
             // snappedPoleId가 있으면 해당 전주 위치 사용, 없으면 장비 위치
             var poleNode = node.snappedPoleId ? nodes.find(function(n){ return n.id === node.snappedPoleId; }) : null;
@@ -891,7 +896,7 @@
             if (!connectingMode || !connectingFromNode) return;
             if (window._nodeJustClicked) return;
             const _now = Date.now();
-            if (_now - _lastWaypointClick < 300) return;
+            if (_now - _lastWaypointClick < 150) return;
             _lastWaypointClick = _now;
             let lat = e.latlng.lat, lng = e.latlng.lng;
 
@@ -985,21 +990,11 @@
                 return;
             }
 
-            // 광 모드: 15m 이내 전주 없으면 클릭 무시, 있으면 클릭 위치에 경유점 + snappedPole 등록
-            var fiberPole = findNearestPole(lat, lng);
-            if (!fiberPole) {
-                showStatus('⚠ 15m 이내 전주가 없습니다 — 전주 근처를 클릭하세요');
-                return;
-            }
-            // 같은 전주에 이미 경유점이 있으면 무시
-            if (pendingWaypoints.some(function(wp) { return wp.snappedPole === fiberPole.id; })) {
-                showStatus('⚠ 이미 경유된 전주입니다: ' + (fiberPole.name || fiberPole.id));
-                return;
-            }
-            pendingWaypoints.push({ lat, lng, snappedPole: fiberPole.id });
+            // 광 모드: 클릭 위치에 자유 경유점 추가
+            pendingWaypoints.push({ lat: lat, lng: lng });
             waypointMarkers.push(_makeWaypointMarker(lat, lng, pendingWaypoints.length));
             updatePreviewLine();
-            showStatus('전주 등록: ' + fiberPole.name + ' | 경유점 ' + pendingWaypoints.length + '개 (Space=일시정지)');
+            showStatus('경유점 ' + pendingWaypoints.length + '개 (Space=일시정지)');
         }
 
         function updatePreviewLine() {
@@ -1175,7 +1170,7 @@
             if (!connectingFromNode.connDirections) connectingFromNode.connDirections = {};
             if (!connectingToNode.connDirections) connectingToNode.connDirections = {};
 
-            var connId = Date.now().toString();
+            var connId = _genId();
             connectingFromNode.connDirections[connId] = 'out';
             connectingToNode.connDirections[connId] = 'in';
 
@@ -1300,7 +1295,7 @@
                         if (!fn.connDirections) fn.connDirections = {};
                         if (!tn.connDirections) tn.connDirections = {};
 
-                        const newConnId = (Date.now() + 1).toString();
+                        const newConnId = _genId();
                         const newConn = {
                             id: newConnId,
                             nodeA: fn.id,   // fn이 OUT(송신)측
@@ -1374,7 +1369,7 @@
                 }
             }
             
-            const connId = Date.now().toString();
+            const connId = _genId();
 
             // connDirections: connectingFromNode가 OUT, connectingToNode가 IN
             connectingFromNode.connDirections[connId] = 'out';
@@ -1446,9 +1441,11 @@
             connectingFromNode = null; window._connectingSourceNodeId = null;
             connectingToNode = null;
             selectedNode = null;
+            // 잔여 경유점 마커/프리뷰 정리
+            if (typeof clearPendingWaypoints === 'function') clearPendingWaypoints();
             hideStatus();
         }
-        
+
         // ── 광케이블 숨김 토글 ──
         var _fiberCablesHidden = false;
         function toggleFiberCables() {
@@ -1493,6 +1490,151 @@
         window.toggleSpanLabels = toggleSpanLabels;
 
         // _coaxHidden, toggleCoaxVisible() → cable_map_coax.js로 이동
+
+        // ==================== poleRoute 시스템 ====================
+
+        // poleRoute에서 경로 좌표 생성 — 전주 ID 배열 → [lat,lng] 배열
+        // 전주별 sibling 감지 + 방향 인식 bisector 오프셋 적용
+        function buildPoleRoutePath(connection, fromNode, toNode, _unusedOffset) {
+            var poleRoute = connection.poleRoute;
+            var off = window._polePreviewOffset || { dLat: 0, dLng: 0 };
+
+            // 시작점 (장비 포트 좌표)
+            var startLat = fromNode.lat, startLng = fromNode.lng;
+            if (fromNode.type === 'onu' && connection.outPort && typeof getOnuPortLatLng === 'function') {
+                var pp = getOnuPortLatLng(fromNode, connection.outPort);
+                startLat = pp.lat; startLng = pp.lng;
+            } else if (fromNode.type === 'junction' && window.getJunctionPortLatLng) {
+                var jp = window.getJunctionPortLatLng(fromNode, connection.fromPort || 'OUT');
+                startLat = jp.lat; startLng = jp.lng;
+            }
+
+            // 끝점 (장비 포트 좌표)
+            var endLat = toNode.lat, endLng = toNode.lng;
+            if (toNode.type === 'junction' && window.getJunctionPortLatLng) {
+                var jtp = window.getJunctionPortLatLng(toNode, connection.toPort || 'IN');
+                endLat = jtp.lat; endLng = jtp.lng;
+            }
+
+            // 전주 좌표 조회
+            var poleCoords = []; // [{lat, lng, id}]
+            for (var i = 0; i < poleRoute.length; i++) {
+                var pole = nodes.find(function(n) { return n.id === poleRoute[i]; });
+                if (pole) {
+                    poleCoords.push({ lat: pole.lat + off.dLat, lng: pole.lng + off.dLng, id: pole.id });
+                }
+            }
+
+            if (poleCoords.length === 0) {
+                return [[startLat, startLng], [endLat, endLng]];
+            }
+
+            // ── 전주별 sibling 감지: 같은 전주를 경유하는 모든 poleRoute 케이블 ──
+            // 각 전주에서 이 케이블이 몇 번째 슬롯인지 계산
+            var poleSlots = {}; // { poleId: { total, myIndex } }
+            var connId = connection.id;
+
+            poleCoords.forEach(function(pc) {
+                var pid = pc.id;
+                // 이 전주를 경유하는 모든 케이블 (poleRoute 기반 + waypoints.snappedPole 기반)
+                var siblings = connections.filter(function(c) {
+                    if (c.poleRoute) return c.poleRoute.indexOf(pid) !== -1;
+                    if (c.waypoints) return c.waypoints.some(function(wp) { return wp.snappedPole === pid; });
+                    return false;
+                });
+                // 일관된 정렬 (ID 기준)
+                siblings.sort(function(a, b) { return a.id < b.id ? -1 : a.id > b.id ? 1 : 0; });
+                var total = siblings.length;
+                var myIdx = siblings.findIndex(function(c) { return c.id === connId; });
+                if (myIdx === -1) myIdx = 0;
+                poleSlots[pid] = { total: total, myIndex: myIdx };
+            });
+
+            // 전체 포인트 배열: 시작점 + 전주들 + 끝점
+            var points = [{ lat: startLat, lng: startLng, id: null }];
+            poleCoords.forEach(function(p) { points.push(p); });
+            points.push({ lat: endLat, lng: endLng, id: null });
+
+            // 방향 인식 bisector 오프셋 적용
+            var result = [];
+            var degPerM = 1 / 111320;
+            var spacingM = getOffsetM(_cableSpacingBase);
+
+            for (var k = 0; k < points.length; k++) {
+                var pt = points[k];
+
+                // 시작/끝 장비는 오프셋 없음
+                if (k === 0 || k === points.length - 1) {
+                    result.push([pt.lat, pt.lng]);
+                    continue;
+                }
+
+                // 이 전주에서의 슬롯 정보
+                // 첫 번째 케이블(slot 0)은 전주 중심, 이후는 간격만큼 밀림
+                var slot = poleSlots[pt.id] || { total: 1, myIndex: 0 };
+                var poleOffset = slot.myIndex * spacingM;
+
+                if (poleOffset === 0) {
+                    result.push([pt.lat, pt.lng]);
+                    continue;
+                }
+
+                var prev = points[k - 1];
+                var next = points[k + 1];
+
+                // 입사/출사 방향 벡터
+                var dxIn  = pt.lng - prev.lng, dyIn  = pt.lat - prev.lat;
+                var lenIn = Math.sqrt(dxIn * dxIn + dyIn * dyIn) || 1;
+                dxIn /= lenIn; dyIn /= lenIn;
+
+                var dxOut = next.lng - pt.lng, dyOut = next.lat - pt.lat;
+                var lenOut = Math.sqrt(dxOut * dxOut + dyOut * dyOut) || 1;
+                dxOut /= lenOut; dyOut /= lenOut;
+
+                // 각 방향의 수직벡터 (왼쪽 90도)
+                var perpInX  = -dyIn,  perpInY  = dxIn;
+                var perpOutX = -dyOut, perpOutY = dxOut;
+
+                // bisector (이등분선)
+                var bisX = perpInX + perpOutX;
+                var bisY = perpInY + perpOutY;
+                var bisLen = Math.sqrt(bisX * bisX + bisY * bisY) || 1;
+                bisX /= bisLen; bisY /= bisLen;
+
+                // miter 보정
+                var dot = perpInX * bisX + perpInY * bisY;
+                var miterScale = (Math.abs(dot) > 0.1) ? 1 / dot : 1;
+                if (miterScale > 2.5) miterScale = 2.5;
+
+                var offLat = bisY * poleOffset * degPerM * miterScale;
+                var offLng = bisX * poleOffset * degPerM * miterScale;
+
+                result.push([pt.lat + offLat, pt.lng + offLng]);
+            }
+
+            return result;
+        }
+
+        // poleRoute에서 특정 구간의 병렬 케이블 수 계산
+        // (향후 구간별 세분화에 사용, 현재는 endpoint 기반 sibling 사용)
+        window.buildPoleRoutePath = buildPoleRoutePath;
+
+        // 전주 삭제 시 모든 케이블의 poleRoute/waypoints에서 해당 전주 제거
+        window.removePoleFromAllRoutes = function(poleId) {
+            connections.forEach(function(conn) {
+                // poleRoute에서 제거
+                if (conn.poleRoute) {
+                    conn.poleRoute = conn.poleRoute.filter(function(id) { return id !== poleId; });
+                    if (conn.poleRoute.length === 0) delete conn.poleRoute;
+                }
+                // waypoints에서도 제거 (snappedPole 일치)
+                if (conn.waypoints) {
+                    conn.waypoints = conn.waypoints.filter(function(wp) { return wp.snappedPole !== poleId; });
+                }
+            });
+        };
+
+        // ==================== poleRoute 시스템 끝 ====================
 
         // 연결 렌더링
         // 두 점 사이 수직 오프셋 (lat/lng 단위)
@@ -1604,52 +1746,35 @@
             const toNode = nodes.find(n => n.id === connTo(connection));
 
             if (!fromNode || !toNode) return;
-            
-            if (!connection.waypoints) connection.waypoints = [];
-            
-            // 같은 노드쌍 연결들 중 몇 번째인지 계산 → 평행 오프셋
-            const siblingConns = connections.filter(c => {
-                const a = connFrom(c), b = connTo(c);
-                const fa = connFrom(connection), fb = connTo(connection);
-                return (a===fa&&b===fb) || (a===fb&&b===fa);
-            });
-            const myIndex = siblingConns.findIndex(c => c.id === connection.id);
-            const total = siblingConns.length;
-            const parallelOffset = total > 1 ? (myIndex - (total-1)/2) * getOffsetM(_cableSpacingBase) : 0;
 
-            // 경로 생성 — ONU outPort / 함체 포트 오프셋 적용
-            let startLat = fromNode.lat, startLng = fromNode.lng;
-            if (fromNode.type === 'onu' && connection.outPort && typeof getOnuPortLatLng === 'function') {
-                var portPos = getOnuPortLatLng(fromNode, connection.outPort);
-                startLat = portPos.lat;
-                startLng = portPos.lng;
-            } else if (fromNode.type === 'junction' && window.getJunctionPortLatLng) {
-                // fromPort 없으면 OUT 기본 사용 (포트 미지정 기존 연결 포함)
-                var _fromPort = connection.fromPort || 'OUT';
-                var jFromPos = window.getJunctionPortLatLng(fromNode, _fromPort);
-                startLat = jFromPos.lat;
-                startLng = jFromPos.lng;
-            }
-            let endLat = toNode.lat, endLng = toNode.lng;
-            if (toNode.type === 'junction' && window.getJunctionPortLatLng) {
-                // toPort 없으면 IN 기본 사용 (포트 미지정 기존 연결 포함)
-                var _toPort = connection.toPort || 'IN';
-                var jToPos = window.getJunctionPortLatLng(toNode, _toPort);
-                endLat = jToPos.lat;
-                endLng = jToPos.lng;
-            }
-            let path = [
-                [startLat, startLng],
-                ...connection.waypoints.map(wp => [wp.lat, wp.lng]),
-                [endLat, endLng]
-            ];
+            let path;
+            {
+                if (!connection.waypoints) connection.waypoints = [];
 
-            // 전주 경유점 옆으로 오프셋
-            path = applyPoleOffset(path, connection.waypoints, connection);
-
-            // 병렬선 오프셋
-            if (parallelOffset !== 0) {
-                path = applyPathOffset(path, parallelOffset);
+                // 경로 생성 — ONU outPort / 함체 포트 오프셋 적용
+                let startLat = fromNode.lat, startLng = fromNode.lng;
+                if (fromNode.type === 'onu' && connection.outPort && typeof getOnuPortLatLng === 'function') {
+                    var portPos = getOnuPortLatLng(fromNode, connection.outPort);
+                    startLat = portPos.lat;
+                    startLng = portPos.lng;
+                } else if (fromNode.type === 'junction' && window.getJunctionPortLatLng) {
+                    var _fromPort = connection.fromPort || 'OUT';
+                    var jFromPos = window.getJunctionPortLatLng(fromNode, _fromPort);
+                    startLat = jFromPos.lat;
+                    startLng = jFromPos.lng;
+                }
+                let endLat = toNode.lat, endLng = toNode.lng;
+                if (toNode.type === 'junction' && window.getJunctionPortLatLng) {
+                    var _toPort = connection.toPort || 'IN';
+                    var jToPos = window.getJunctionPortLatLng(toNode, _toPort);
+                    endLat = jToPos.lat;
+                    endLng = jToPos.lng;
+                }
+                path = [
+                    [startLat, startLng],
+                    ...connection.waypoints.map(wp => [wp.lat, wp.lng]),
+                    [endLat, endLng]
+                ];
             }
             
             // 선 그리기 — 신설/기설, 광/동축 구분
@@ -1972,11 +2097,9 @@
 
             _waypointMapClickHandler = function(mouseEvent) {
                 var lat = mouseEvent.coord.lat(), lng = mouseEvent.coord.lng();
-                var pole = findNearestPoleR(lat, lng, SNAP_RADIUS_M);
-                if (!pole) { showStatus('⚠ ' + SNAP_RADIUS_M + 'm 이내 전주가 없습니다 (ESC=취소)'); return; }
 
-                // 클릭 위치 그대로, snappedPole만 기록
-                var latlng = { lat: lat, lng: lng, snappedPole: pole.id };
+                // 클릭 위치에 자유 경유점 삽입
+                var latlng = { lat: lat, lng: lng };
 
                 // 가장 가까운 구간에 삽입
                 var minDist = Infinity, insertIndex = 0;
@@ -2052,6 +2175,12 @@
                     clickable: true
                 });
                 naver.maps.Event.addListener(circle, 'click', function() {
+                    // poleRoute 동기화
+                    if (_wpDeleteConn.poleRoute && wp.snappedPole) {
+                        var prIdx = _wpDeleteConn.poleRoute.indexOf(wp.snappedPole);
+                        if (prIdx !== -1) _wpDeleteConn.poleRoute.splice(prIdx, 1);
+                        if (_wpDeleteConn.poleRoute.length === 0) delete _wpDeleteConn.poleRoute;
+                    }
                     _wpDeleteConn.waypoints.splice(idx, 1);
                     saveData(); renderAllConnections();
                     _cancelWpDeleteMode();
@@ -2161,19 +2290,19 @@
 
                 // 케이블 그리기 모드와 동일한 녹색 스냅 가이드선 활성화
                 _wpMoveSnapMM = function(me) {
-                    if (snapHighlight) { snapHighlight.setMap(null); snapHighlight = null; }
-                    if (snapGuideLine) { snapGuideLine.setMap(null); snapGuideLine = null; }
+                    if (_wpMoveHighlight) { _wpMoveHighlight.setMap(null); _wpMoveHighlight = null; }
+                    if (_wpMoveGuideLine) { _wpMoveGuideLine.setMap(null); _wpMoveGuideLine = null; }
                     var mlat = me.coord.lat(), mlng = me.coord.lng();
                     var nearPole = findNearestPoleR(mlat, mlng, SNAP_RADIUS_M);
                     if (nearPole) {
                         var _off = window._polePreviewOffset || { dLat: 0, dLng: 0 };
                         var pLat = nearPole.lat + _off.dLat, pLng = nearPole.lng + _off.dLng;
-                        snapHighlight = new naver.maps.Circle({
+                        _wpMoveHighlight = new naver.maps.Circle({
                             map: map._m, center: new naver.maps.LatLng(pLat, pLng), radius: 1,
                             strokeWeight: 1, strokeColor: '#00cc44', strokeOpacity: 1,
                             fillColor: '#00cc44', fillOpacity: 0.8
                         });
-                        snapGuideLine = new naver.maps.Polyline({
+                        _wpMoveGuideLine = new naver.maps.Polyline({
                             map: map._m,
                             path: [new naver.maps.LatLng(mlat, mlng), new naver.maps.LatLng(pLat, pLng)],
                             strokeColor: '#00cc44', strokeWeight: 1, strokeOpacity: 0.7, strokeStyle: 'solid'
@@ -2205,8 +2334,8 @@
             _wpMoveSelectedIdx = null;
             _wpMoveOrigPoleId = null;
             if (_wpMoveSnapMM) { _nEvent.remove(map._m, 'mousemove', _wpMoveSnapMM); _wpMoveSnapMM = null; }
-            if (snapHighlight) { snapHighlight.setMap(null); snapHighlight = null; }
-            if (snapGuideLine) { snapGuideLine.setMap(null); snapGuideLine = null; }
+            if (_wpMoveHighlight) { _wpMoveHighlight.setMap(null); _wpMoveHighlight = null; }
+            if (_wpMoveGuideLine) { _wpMoveGuideLine.setMap(null); _wpMoveGuideLine = null; }
             if (_wpMoveClickHandler) { _nEvent.remove(map._m, 'click', _wpMoveClickHandler); _wpMoveClickHandler = null; }
             document.body.classList.remove('connecting-mode');
         }
@@ -2272,24 +2401,28 @@
                 if (item.marker) map.removeLayer(item.marker);
             });
             polylines = [];
-            
+
             // 새로 렌더링
             connections.forEach(connection => {
                 renderConnection(connection);
             });
+            // 전주 캔버스 재생성 (polyline 재생성 후 전주명이 가려지는 현상 방지)
+            if (typeof drawPoleCanvas === 'function') drawPoleCanvas();
         }
         
         // 상태 메시지 표시
+        var _statusTimer = null;
         function showStatus(message) {
             const statusEl = document.getElementById('statusMessage');
             statusEl.textContent = message;
             statusEl.classList.add('active');
-            
-            setTimeout(() => {
+            if (_statusTimer) clearTimeout(_statusTimer);
+            _statusTimer = setTimeout(() => {
                 hideStatus();
+                _statusTimer = null;
             }, 5000);
         }
-        
+
         // 상태 메시지 숨기기
         function hideStatus() {
             document.getElementById('statusMessage').classList.remove('active');
@@ -2424,8 +2557,8 @@
                 _poleMoveCircles = [];
                 if (_ghostOverlay) { _ghostOverlay.remove(); _ghostOverlay = null; }
                 // 취소 시 원본 마커 복원
-                if (!markers[movingNode && movingNode.id]) {
-                    if (movingNode) renderNode(movingNode);
+                if (movingNode && !markers[movingNode.id]) {
+                    renderNode(movingNode);
                 }
                 document.removeEventListener('mousemove', _onBodyMousemove);
                 _nEvent.remove(map._m, 'mousemove', _onMoveMousemove);
@@ -2433,8 +2566,26 @@
 
             _nEvent.add(map._m, 'mousemove', _onMoveMousemove);
 
+            // ESC 취소 핸들러
+            function _onMoveEsc(e) {
+                if (e.key === 'Escape' || e.keyCode === 27) {
+                    _cleanupMoveSnap();
+                    map.off('click', _onMoveClick);
+                    document.removeEventListener('keydown', _onMoveEsc);
+                    movingNodeMode = false;
+                    window.movingNodeMode = false;
+                    movingNode = null;
+                    document.body.classList.remove('moving-mode');
+                    showStatus('장비 이동 취소');
+                }
+            }
+            document.addEventListener('keydown', _onMoveEsc);
+
             // 지도 클릭 이벤트 추가
-            map.once('click', function(e) {
+            map.on('click', _onMoveClick);
+            function _onMoveClick(e) {
+                map.off('click', _onMoveClick);
+                document.removeEventListener('keydown', _onMoveEsc);
                 _cleanupMoveSnap();
 
                 if (movingNode) {
@@ -2483,7 +2634,7 @@
                 window.movingNodeMode = false;
                 movingNode = null;
                 document.body.classList.remove('moving-mode');
-            });
+            }
         }
         
         // ==================== OFD 관련 함수 ====================
@@ -2929,12 +3080,17 @@
             var fromNode = arr.find(function(n){ return n.id === connFrom(conn); });
             var toNode   = arr.find(function(n){ return n.id === connTo(conn); });
             addNodeOrNearPole(fromNode);
-            (conn.waypoints || []).forEach(function(wp) {
-                if (wp.snappedPole && stops.indexOf(wp.snappedPole) === -1) stops.push(wp.snappedPole);
-            });
+            // poleRoute 우선 사용 (전주 ID 배열), 없으면 waypoints에서 추출
+            if (conn.poleRoute && conn.poleRoute.length > 0) {
+                conn.poleRoute.forEach(function(pid) {
+                    if (stops.indexOf(pid) === -1) stops.push(pid);
+                });
+            } else {
+                (conn.waypoints || []).forEach(function(wp) {
+                    if (wp.snappedPole && stops.indexOf(wp.snappedPole) === -1) stops.push(wp.snappedPole);
+                });
+            }
             addNodeOrNearPole(toNode);
-            // 물리적 경로 순서 유지 (fromNode → waypoints → toNode)
-            // 전주번호 정렬 제거: 역방향 케이블(예: 102→124L1L1→100)에서 nextPoleId 오류 방지
             return stops;
         }
 
@@ -3025,7 +3181,9 @@
                         cableType:   conn.cableType || 'fiber',
                         lineType:    conn.lineType || 'new',
                         fromNodeId:  connFrom(conn),
-                        fromNodeType: fromEq ? fromEq.type : null
+                        fromNodeType: fromEq ? fromEq.type : null,
+                        toNodeId:    connTo(conn),
+                        toNodeType:  toEq ? toEq.type : null
                     });
                 });
             });
@@ -3868,37 +4026,48 @@
             document.body.appendChild(panel);
 
             // 드래그 이동
-            (function() {
-                var dx = 0, dy = 0, dragging = false;
-                header.addEventListener('mousedown', function(e) {
-                    if (e.target === closeBtn) return;
-                    dragging = true;
-                    dx = e.clientX - panel.offsetLeft;
-                    dy = e.clientY - panel.offsetTop;
-                    e.preventDefault();
-                });
-                document.addEventListener('mousemove', function(e) {
-                    if (!dragging) return;
-                    panel.style.left = (e.clientX - dx) + 'px';
-                    panel.style.top = (e.clientY - dy) + 'px';
-                });
-                document.addEventListener('mouseup', function() { dragging = false; });
-                // 터치 지원
-                header.addEventListener('touchstart', function(e) {
-                    if (e.target === closeBtn) return;
-                    dragging = true;
-                    var t = e.touches[0];
-                    dx = t.clientX - panel.offsetLeft;
-                    dy = t.clientY - panel.offsetTop;
-                });
-                document.addEventListener('touchmove', function(e) {
-                    if (!dragging) return;
-                    var t = e.touches[0];
-                    panel.style.left = (t.clientX - dx) + 'px';
-                    panel.style.top = (t.clientY - dy) + 'px';
-                });
-                document.addEventListener('touchend', function() { dragging = false; });
-            })();
+            var _otdrDx = 0, _otdrDy = 0, _otdrDragging = false;
+            function _otdrMousedown(e) {
+                if (e.target === closeBtn) return;
+                _otdrDragging = true;
+                _otdrDx = e.clientX - panel.offsetLeft;
+                _otdrDy = e.clientY - panel.offsetTop;
+                e.preventDefault();
+            }
+            function _otdrMousemove(e) {
+                if (!_otdrDragging) return;
+                panel.style.left = (e.clientX - _otdrDx) + 'px';
+                panel.style.top = (e.clientY - _otdrDy) + 'px';
+            }
+            function _otdrMouseup() { _otdrDragging = false; }
+            header.addEventListener('mousedown', _otdrMousedown);
+            document.addEventListener('mousemove', _otdrMousemove);
+            document.addEventListener('mouseup', _otdrMouseup);
+            // 터치 지원
+            function _otdrTouchstart(e) {
+                if (e.target === closeBtn) return;
+                _otdrDragging = true;
+                var t = e.touches[0];
+                _otdrDx = t.clientX - panel.offsetLeft;
+                _otdrDy = t.clientY - panel.offsetTop;
+            }
+            function _otdrTouchmove(e) {
+                if (!_otdrDragging) return;
+                var t = e.touches[0];
+                panel.style.left = (t.clientX - _otdrDx) + 'px';
+                panel.style.top = (t.clientY - _otdrDy) + 'px';
+            }
+            function _otdrTouchend() { _otdrDragging = false; }
+            header.addEventListener('touchstart', _otdrTouchstart);
+            document.addEventListener('touchmove', _otdrTouchmove);
+            document.addEventListener('touchend', _otdrTouchend);
+            // 닫을 때 리스너 제거용 저장
+            window._otdrDragCleanup = function() {
+                document.removeEventListener('mousemove', _otdrMousemove);
+                document.removeEventListener('mouseup', _otdrMouseup);
+                document.removeEventListener('touchmove', _otdrTouchmove);
+                document.removeEventListener('touchend', _otdrTouchend);
+            };
 
             // 검색
             document.getElementById('otdrSearchBtn').onclick = function() {
@@ -4010,6 +4179,7 @@
         }
 
         function closeOtdrPanel() {
+            if (window._otdrDragCleanup) { window._otdrDragCleanup(); window._otdrDragCleanup = null; }
             var panel = document.getElementById('otdrPanel');
             if (panel) panel.remove();
             clearOtdrMarker();
@@ -4062,7 +4232,7 @@
 
             // 장비 노드 생성 (전주 중심에 배치)
             var equipNode = {
-                id: 'coax_' + Date.now().toString(),
+                id: 'coax_' + _genId(),
                 type: equipType,
                 lat: placeLat,
                 lng: placeLng,
@@ -4083,7 +4253,7 @@
             var cores = 12;
             var lineType = 'new';
 
-            var connId = Date.now().toString();
+            var connId = _genId();
 
             // connDirections 설정
             if (!connectingFromNode.connDirections) connectingFromNode.connDirections = {};

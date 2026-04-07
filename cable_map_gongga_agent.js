@@ -60,26 +60,92 @@
 
         agentData.범위내전주.forEach(function (pole) {
             var routes = pole.connRoutes || [];
-            var equips = agentData.장비매핑[pole.id] || [];
+            var allEquips = agentData.장비매핑[pole.id] || [];
 
             // 케이블 없이 장비만 있는 전주 → 99999/999 행
             if (routes.length === 0) {
                 var hasNearJunction = agentData.함체목록.some(function(j) {
                     return j.nearPoleId === pole.id;
                 });
-                if (equips.length > 0 || hasNearJunction) {
+                if (allEquips.length > 0 || hasNearJunction) {
                     rows.push({
                         현전주: pole, '1차전주': EMPTY_POLE, '2차전주': EMPTY_POLE,
-                        케이블규격: '', 통신선종류: 'O', 장비목록: equips, 케이블id: null
+                        케이블규격: '', 통신선종류: 'O', 장비목록: allEquips, 케이블id: null
                     });
                 }
                 return;
             }
 
+            // ── 케이블이 1조뿐이면 모든 장비를 그대로 할당 ──
+            // ── 2조 이상이면 케이블별 장비 분배 필요 ──
+
             // ── 이 전주에 인접한 함체 탐색 ──
             var nearJunction = agentData.함체목록.find(function(j) {
                 return j.nearPoleId === pole.id;
             });
+
+            // ── 장비-케이블 매핑: 각 장비가 어떤 케이블에 속하는지 결정 ──
+            // 함체 포트에 연결된 connId 수집
+            var junctionConnIds = {};
+            if (nearJunction) {
+                var _pc = nearJunction.portConns || {};
+                Object.keys(_pc).forEach(function(port) { if (_pc[port]) junctionConnIds[_pc[port]] = true; });
+            }
+
+            // 케이블별 장비 분배 함수
+            function getEquipsForRoute(route) {
+                // 케이블이 1조뿐이면 모든 장비
+                if (routes.length <= 1) return allEquips;
+                var routeEquips = [];
+                allEquips.forEach(function(eq) {
+                    // 함체 장비: 이 케이블이 함체의 포트에 연결된 경우에만
+                    if (eq.type === 'junction') {
+                        if (junctionConnIds[route.connId]) routeEquips.push(eq);
+                        return;
+                    }
+                    // 기타 장비: 케이블의 from/to 노드가 이 장비인 경우에만
+                    if (route.fromNodeId === eq.id || route.toNodeId === eq.id) {
+                        routeEquips.push(eq);
+                        return;
+                    }
+                    // 함체 포트 케이블에 연결된 장비 → 함체 케이블에만 할당
+                    if (junctionConnIds[route.connId]) {
+                        // 이 장비가 다른 케이블의 from/to도 아니면 함체 케이블에 할당
+                        var ownedByOther = routes.some(function(r) {
+                            return r.connId !== route.connId && (r.fromNodeId === eq.id || r.toNodeId === eq.id);
+                        });
+                        if (!ownedByOther) routeEquips.push(eq);
+                    }
+                });
+                return routeEquips;
+            }
+
+            // 병합된 행의 장비 분배 (IN+OUT 병합 시)
+            function getEquipsForMergedRoute(connIds) {
+                if (routes.length <= 1) return allEquips;
+                var routeEquips = [];
+                allEquips.forEach(function(eq) {
+                    if (eq.type === 'junction') {
+                        // 함체는 자기 포트 케이블에만
+                        var match = connIds.some(function(cid) { return junctionConnIds[cid]; });
+                        if (match) routeEquips.push(eq);
+                        return;
+                    }
+                    // from/to가 이 케이블들 중 하나에 속하는지
+                    var owned = connIds.some(function(cid) {
+                        var r = routes.find(function(rt) { return rt.connId === cid; });
+                        return r && (r.fromNodeId === eq.id || r.toNodeId === eq.id);
+                    });
+                    if (owned) { routeEquips.push(eq); return; }
+                    // 다른 케이블에 속하지 않는 장비는 함체 케이블에 할당
+                    var ownedByOther = routes.some(function(r) {
+                        if (connIds.indexOf(r.connId) !== -1) return false;
+                        return r.fromNodeId === eq.id || r.toNodeId === eq.id;
+                    });
+                    if (!ownedByOther) routeEquips.push(eq);
+                });
+                return routeEquips;
+            }
 
             // 병합 처리된 connId 추적
             var mergedIds = {};
@@ -95,36 +161,37 @@
                 if (inRoute && outRoute) {
                     var prevPole = getPoleRef(inRoute.prevPoleId);
                     var nextPole = getPoleRef(outRoute.nextPoleId);
-                    // inLastPole 폴백 (IN 앞쪽이 또 다른 junction인 경우)
                     if (!prevPole && inRoute.fromNodeType === 'junction') {
                         var jj = agentData.함체목록.find(function(j){ return j.id === inRoute.fromNodeId; });
                         if (jj && jj.inLastPole) prevPole = jj.inLastPole;
                     }
-                    // outFirstPole 폴백: outRoute.nextPoleId가 null인 경우
                     if (!nextPole && nearJunction.outFirstPole) nextPole = nearJunction.outFirstPole;
+                    var mergedConnIds = [inConnId, outConnId];
                     rows.push({
                         현전주:    pole,
                         '1차전주': prevPole  || EMPTY_POLE,
                         '2차전주': nextPole  || EMPTY_POLE,
                         케이블규격: String(inRoute.cores || outRoute.cores || ''),
-                        통신선종류: inRoute.cableType === 'coax' ? 'C' : 'O',
-                        장비목록:  equips,
+                        통신선종류: inRoute.lineType === 'coax' ? 'C' : 'O',
+                        장비목록:  getEquipsForMergedRoute(mergedConnIds),
                         케이블id:  inConnId + '+' + outConnId
                     });
                     mergedIds[inConnId]  = true;
                     mergedIds[outConnId] = true;
                 }
-                // IN만 있고 OUT 없음 → outFirstPole로 2차전주 시도
+                // IN만 있고 OUT 없음
                 else if (inRoute && !outRoute) {
                     var prevPole2 = getPoleRef(inRoute.prevPoleId);
                     var nextPole2 = nearJunction.outFirstPole || EMPTY_POLE;
+                    var mergedConnIds2 = [inConnId];
+                    if (outConnId) mergedConnIds2.push(outConnId);
                     rows.push({
                         현전주:    pole,
                         '1차전주': prevPole2 || EMPTY_POLE,
                         '2차전주': nextPole2,
                         케이블규격: String(inRoute.cores || ''),
-                        통신선종류: inRoute.cableType === 'coax' ? 'C' : 'O',
-                        장비목록:  equips,
+                        통신선종류: inRoute.lineType === 'coax' ? 'C' : 'O',
+                        장비목록:  getEquipsForMergedRoute(mergedConnIds2),
                         케이블id:  inConnId + (outConnId ? '+' + outConnId : '')
                     });
                     mergedIds[inConnId] = true;
@@ -137,7 +204,6 @@
                 if (mergedIds[route.connId]) return;
 
                 var prevPole = getPoleRef(route.prevPoleId);
-                // 함체 OUT/BRL/BRR 시작: 1차전주 = 함체 IN의 마지막 전주
                 if (!prevPole && route.fromNodeType === 'junction') {
                     var junction = agentData.함체목록.find(function(j){ return j.id === route.fromNodeId; });
                     if (junction && junction.inLastPole) prevPole = junction.inLastPole;
@@ -149,8 +215,8 @@
                     '1차전주': prevPole || EMPTY_POLE,
                     '2차전주': nextPole || EMPTY_POLE,
                     케이블규격: String(route.cores || ''),
-                    통신선종류: route.cableType === 'coax' ? 'C' : 'O',
-                    장비목록:  equips,
+                    통신선종류: route.lineType === 'coax' ? 'C' : 'O',
+                    장비목록:  getEquipsForRoute(route),
                     케이블id:  route.connId
                 });
             });

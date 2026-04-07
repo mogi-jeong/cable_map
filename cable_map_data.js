@@ -70,7 +70,7 @@
 
         // 전주 타입 판별 (cable_map_map.js와 동일하게 유지)
         function isPoleType(t) {
-            return t === 'pole' || t === 'pole_existing' || t === 'pole_new' || t === 'pole_removed';
+            return t === 'pole' || t === 'pole_existing' || t === 'pole_new' || t === 'pole_removed' || t === 'pole_private';
         }
 
         // ==================== IndexedDB 헬퍼 ====================
@@ -134,6 +134,17 @@
                 const req = db.transaction('poles', 'readwrite').objectStore('poles').clear();
                 req.onsuccess = resolve;
                 req.onerror   = function() { reject(req.error); };
+            });
+        }
+
+        // IDB에서 특정 ID 목록의 전주 삭제
+        function idbDeleteMany(db, ids) {
+            return new Promise(function(resolve, reject) {
+                const tx    = db.transaction('poles', 'readwrite');
+                const store = tx.objectStore('poles');
+                ids.forEach(function(id) { store.delete(id); });
+                tx.oncomplete = resolve;
+                tx.onerror    = function() { reject(tx.error); };
             });
         }
 
@@ -237,6 +248,12 @@
             _pendingPoleSnapshot.push(JSON.parse(JSON.stringify(poleNode)));
         }
 
+        // 전주 삭제 시 IDB 반영을 위한 대기열
+        var _pendingPoleDeletes = [];
+        function markPoleForDelete(poleId) {
+            _pendingPoleDeletes.push(poleId);
+        }
+
         async function performUndo() {
             if (!_undoStack.length) { if (typeof showStatus === 'function') showStatus('되돌릴 작업이 없습니다'); return; }
             var snap = _undoStack.pop();
@@ -281,15 +298,23 @@
             localStorage.setItem('fiberNodes',       JSON.stringify(otherNodes));
             localStorage.setItem('fiberConnections', JSON.stringify(connections));
 
-            // 전주 → IndexedDB (put만, clear 없음 — 뷰포트 분할 로드 시 나머지 전주 보존)
-            // nodes에 전주가 없을 때(임포트 직후 등)는 IDB 트랜잭션 생략
-            if (poleNodes.length === 0) return;
+            // 전주 → IndexedDB
             const db = await getDB();
-            await idbPutMany(db, poleNodes);
+            // 삭제 대기열 처리
+            if (_pendingPoleDeletes.length > 0) {
+                await idbDeleteMany(db, _pendingPoleDeletes);
+                _pendingPoleDeletes = [];
+            }
+            // 전주 put (있을 때만)
+            if (poleNodes.length > 0) {
+                await idbPutMany(db, poleNodes);
+            }
         }
 
-        window.markPoleForUndo = markPoleForUndo;
-        window.performUndo     = performUndo;
+        window.markPoleForUndo    = markPoleForUndo;
+        window.markPoleForDelete  = markPoleForDelete;
+        window.performUndo        = performUndo;
+        window._genId = function() { return Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7); };
 
         // IDB에서 특정 ID 목록의 전주 로드
         async function loadPolesByIds(ids) {

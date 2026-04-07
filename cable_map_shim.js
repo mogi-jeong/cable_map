@@ -75,13 +75,15 @@
         },
         once:function(ev,fn){
             var self=this;
+            // 이벤트명 변환 (on()과 동일)
+            var naverEv=ev==='moveend'?'idle':ev==='move'?'drag':ev==='zoomend'?'zoom_changed':ev;
             var w=function(e){
                 self.off(ev,fn);
                 var lat=null,lng=null;
                 if(e&&e.coord){lat=e.coord.lat();lng=e.coord.lng();}
                 fn(lat!=null?{latlng:{lat:lat,lng:lng}}:{});
             };
-            var h=naver.maps.Event.addListener(this._m,ev,w);
+            var h=naver.maps.Event.addListener(this._m,naverEv,w);
             if(!this._ls[ev])this._ls[ev]=[];
             this._ls[ev].push({fn:fn,handles:[h]});
             return this;
@@ -154,13 +156,13 @@
                 if(!e||!e.coord)return;
                 var ev={latlng:{lat:e.coord.lat(),lng:e.coord.lng()},originalEvent:e},now=Date.now();
                 if(self._ls.click)self._ls.click.forEach(function(f){f(ev);});
-                if(now-last<400&&self._ls.dblclick)self._ls.dblclick.forEach(function(f){f(ev);});
-                last=now;
+                if(now-last<400&&self._ls.dblclick){self._ls.dblclick.forEach(function(f){f(ev);});last=0;}else{last=now;}
             });
             return this;
         },
         on:function(ev,fn){if(ev.startsWith('touch'))return this;if(!this._ls[ev])this._ls[ev]=[];this._ls[ev].push(fn);return this;},
         setMap:function(m){if(this._line)this._line.setMap(m?m._m:null);return this;},
+        setPath:function(ll){if(this._line){var path=ll.map(function(p){return new naver.maps.LatLng(p[0],p[1]);});this._line.setPath(path);}return this;},
         setOptions:function(opts){if(!this._line)return this;var o={};if(opts.strokeWeight!=null)o.strokeWeight=opts.strokeWeight;if(opts.strokeOpacity!=null)o.strokeOpacity=opts.strokeOpacity;if(opts.strokeColor)o.strokeColor=opts.strokeColor;this._line.setOptions(o);return this;}
     };
 
@@ -193,8 +195,7 @@
                 if(!e||!e.coord)return;
                 var ev={latlng:{lat:e.coord.lat(),lng:e.coord.lng()}},now=Date.now();
                 if(self._ls.click)self._ls.click.forEach(function(f){f(ev);});
-                if(now-last<400&&self._ls.dblclick)self._ls.dblclick.forEach(function(f){f(ev);});
-                last=now;
+                if(now-last<400&&self._ls.dblclick){self._ls.dblclick.forEach(function(f){f(ev);});last=0;}else{last=now;}
             });
             return this;
         },
@@ -229,13 +230,23 @@
         add: function(target, event, fn) {
             var handle = naver.maps.Event.addListener(target, event, fn);
             if (!fn.__nHandles) fn.__nHandles = [];
-            fn.__nHandles.push(handle);
+            fn.__nHandles.push({ target: target, event: event, handle: handle });
             return handle;
         },
         remove: function(target, event, fn) {
-            if (fn.__nHandles && fn.__nHandles.length) {
-                naver.maps.Event.removeListener(fn.__nHandles.pop());
+            if (!fn.__nHandles || !fn.__nHandles.length) return;
+            // target+event 일치하는 핸들 찾아서 제거
+            for (var i = fn.__nHandles.length - 1; i >= 0; i--) {
+                var entry = fn.__nHandles[i];
+                if (entry.target === target && entry.event === event) {
+                    naver.maps.Event.removeListener(entry.handle);
+                    fn.__nHandles.splice(i, 1);
+                    return;
+                }
             }
+            // 폴백: 매칭 안 되면 마지막 핸들 제거
+            var last = fn.__nHandles.pop();
+            if (last) naver.maps.Event.removeListener(last.handle);
         }
     };
 

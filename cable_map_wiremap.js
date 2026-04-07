@@ -2266,6 +2266,8 @@
                             localStorage.removeItem('fiberDataVersion');
                             nodes = [];
                             connections = [];
+                            // IDB 전주 스토어도 초기화
+                            if (window.clearPoleStore) window.clearPoleStore();
                             // markers는 {nodeId: marker} 객체
                             Object.values(markers).forEach(m => map.removeLayer(m));
                             polylines.forEach(item => {
@@ -2327,7 +2329,10 @@
                             () => {
                                 nodes = importedData.nodes;
                                 connections = importedData.connections;
-                                saveData();
+                                // 기존 IDB 전주 클리어 후 저장 (import는 완전 교체)
+                                (window.clearPoleStore ? window.clearPoleStore() : Promise.resolve()).then(function() {
+                                    saveData();
+                                });
 
                                 for (let id in markers) {
                                     map.removeLayer(markers[id]);

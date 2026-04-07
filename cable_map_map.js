@@ -354,7 +354,7 @@
                                 cancelAdding();
                                 document.getElementById('junctionConfirmPopup').style.display = 'none';
                                 var newNode = {
-                                    id: Date.now().toString(),
+                                    id: _genId(),
                                     type: _snapType,
                                     lat: _snapLat, lng: _snapLng,
                                     name: _snapType === 'junction' ? _snapPoleName : '',
@@ -389,7 +389,7 @@
                                     popup.style.display = 'none';
                                     cancelAdding();
                                     var node = {
-                                        id: Date.now().toString(),
+                                        id: _genId(),
                                         type: 'junction',
                                         lat: e.latlng.lat, lng: e.latlng.lng,
                                         name: '', fiberType: '', memo: '',
@@ -577,7 +577,7 @@
         // 노드 추가
         function addNode(lat, lng, type) {
             const node = {
-                id: Date.now().toString(),
+                id: _genId(),
                 type: type,
                 lat: lat,
                 lng: lng,
@@ -777,6 +777,11 @@
                 drawPoleCanvas();
                 return;
             }
+            // 기존 마커가 있으면 제거 (중복 방지)
+            if (markers[node.id]) {
+                markers[node.id].setMap(null);
+                delete markers[node.id];
+            }
 
             // 동축 장비는 별도 렌더러
             if (typeof isCoaxType === 'function' && isCoaxType(node.type)) {
@@ -807,7 +812,7 @@
                 clearTimeout(window._nodeClickTimer);
                 window._nodeClickTimer = setTimeout(function() {
                     window._nodeJustClicked = false;
-                }, 600);
+                }, 200);
                 onNodeClick(node);
             });
             
@@ -849,9 +854,22 @@
                 connections.forEach(function(c) {
                     if (c.nodeA) labelPoleIds.add(c.nodeA);
                     if (c.nodeB) labelPoleIds.add(c.nodeB);
+                    if (c.poleRoute) {
+                        c.poleRoute.forEach(function(pid) { labelPoleIds.add(pid); });
+                    }
                     if (c.waypoints) {
                         c.waypoints.forEach(function(wp) {
-                            if (wp.snappedPole) labelPoleIds.add(wp.snappedPole);
+                            if (wp.snappedPole) { labelPoleIds.add(wp.snappedPole); return; }
+                            // 자유 경유점: 가장 가까운 전주 1개만 등록
+                            var best = null, bestD = 100; // 10m = 100m²
+                            nodes.forEach(function(pole) {
+                                if (!isPoleType(pole.type)) return;
+                                var dlat = (wp.lat - pole.lat) * 111000;
+                                var dlng = (wp.lng - pole.lng) * 111000 * Math.cos(pole.lat * Math.PI / 180);
+                                var d2 = dlat * dlat + dlng * dlng;
+                                if (d2 < bestD) { bestD = d2; best = pole; }
+                            });
+                            if (best) labelPoleIds.add(best.id);
                         });
                     }
                 });
@@ -894,7 +912,19 @@
                 connections.forEach(function(c) {
                     if (c.nodeA) _cablePoleIds.add(c.nodeA);
                     if (c.nodeB) _cablePoleIds.add(c.nodeB);
-                    if (c.waypoints) c.waypoints.forEach(function(wp) { if (wp.snappedPole) _cablePoleIds.add(wp.snappedPole); });
+                    if (c.poleRoute) c.poleRoute.forEach(function(pid) { _cablePoleIds.add(pid); });
+                    if (c.waypoints) c.waypoints.forEach(function(wp) {
+                        if (wp.snappedPole) { _cablePoleIds.add(wp.snappedPole); return; }
+                        var best = null, bestD = 100;
+                        nodes.forEach(function(pole) {
+                            if (!isPoleType(pole.type)) return;
+                            var dlat = (wp.lat - pole.lat) * 111000;
+                            var dlng = (wp.lng - pole.lng) * 111000 * Math.cos(pole.lat * Math.PI / 180);
+                            var d2 = dlat * dlat + dlng * dlng;
+                            if (d2 < bestD) { bestD = d2; best = pole; }
+                        });
+                        if (best) _cablePoleIds.add(best.id);
+                    });
                 });
                 // 케이블 연결 장비 근처 전주도 포함
                 var cEquipIds = new Set();
@@ -1050,7 +1080,7 @@
                     if (window._gonggaPolyMode) return;
                     window._nodeJustClicked = true;
                     clearTimeout(window._nodeClickTimer);
-                    window._nodeClickTimer = setTimeout(function(){ window._nodeJustClicked = false; }, 600);
+                    window._nodeClickTimer = setTimeout(function(){ window._nodeJustClicked = false; }, 200);
                     onNodeClick(hit);
                     e.stopPropagation();
                 }
@@ -1185,7 +1215,7 @@
             // 지도 click 이벤트와 중복 방지
             window._nodeJustClicked = true;
             clearTimeout(window._nodeClickTimer);
-            window._nodeClickTimer = setTimeout(function(){ window._nodeJustClicked = false; }, 600);
+            window._nodeClickTimer = setTimeout(function(){ window._nodeJustClicked = false; }, 200);
 
             // ONU 장비 이동 모드: 전주 클릭
             if (window._onuMoveTarget && window._onuMoveClickHandler) {
@@ -1661,9 +1691,10 @@
             var orig = { labelAngle: node.labelAngle, labelOffset: node.labelOffset };
             node.labelAngle  = parseFloat(angle)  || 0;
             node.labelOffset = isNaN(parseFloat(offset)) ? 20 : parseFloat(offset);
-            drawPoleCanvas();
-            node.labelAngle  = orig.labelAngle;
-            node.labelOffset = orig.labelOffset;
+            try { drawPoleCanvas(); } finally {
+                node.labelAngle  = orig.labelAngle;
+                node.labelOffset = orig.labelOffset;
+            }
         }
 
         function resetPoleLabel(nodeId) {
@@ -1691,8 +1722,10 @@
         function deletePole(nodeId) {
             if(!confirm('전주를 삭제할까요?')) return;
             const idx = nodes.findIndex(n=>n.id===nodeId);
-            if(idx!==-1) { markPoleForUndo(nodes[idx]); nodes.splice(idx,1); }
-            saveData(); drawPoleCanvas(); closeMenuModal(); showStatus('전주 삭제 완료');
+            if(idx!==-1) { markPoleForUndo(nodes[idx]); if (window.markPoleForDelete) markPoleForDelete(nodeId); nodes.splice(idx,1); }
+            // 케이블 poleRoute/waypoints에서 삭제된 전주 제거
+            if (window.removePoleFromAllRoutes) window.removePoleFromAllRoutes(nodeId);
+            saveData(); drawPoleCanvas(); closeMenuModal(); renderAllConnections(); showStatus('전주 삭제 완료');
         }
 
         // 메뉴 모달 표시
@@ -1791,16 +1824,7 @@
             } else if (node.type === 'junction') {
                 addItem(icons.info, '접속정보', showNodeInfo);
                 addItem(icons.rotate, '각도 조절', function() { if (window.showJunctionAnglePanel) window.showJunctionAnglePanel(selectedNode); });
-                addItem(icons.cable, '케이블 연결', function() {
-                    if (window.showJunctionPortSelect) {
-                        window.showJunctionPortSelect(selectedNode, 'from', function(portId) {
-                            window._pendingFromPort = portId;
-                            startConnecting();
-                        });
-                    } else {
-                        startConnecting();
-                    }
-                });
+                addItem(icons.cable, '케이블 연결', startConnecting);
                 addItem(icons.wire, '직선도', function() { showWireMapFromMenu(); });
                 addItem(icons.move, '장비 이동', startMovingNode, {separator:true});
                 addItem(icons.del, '장비 삭제', deleteNodeFromMenu, {danger:true});
@@ -1830,16 +1854,23 @@
 
             // 바깥 클릭 시 닫기
             setTimeout(function() {
-                document.addEventListener('click', function _closeCtx(e) {
+                function _closeCtx(e) {
                     if (menu.contains(e.target)) return;
                     closeMenuModal();
+                }
+                document.addEventListener('click', _closeCtx);
+                // closeMenuModal에서 제거할 수 있도록 저장
+                window._menuCtxCleanup = function() {
                     document.removeEventListener('click', _closeCtx);
-                });
+                    window._menuCtxCleanup = null;
+                };
             }, 0);
         }
 
         // 메뉴 모달 닫기
         function closeMenuModal() {
+            // 바깥 클릭 리스너 정리
+            if (window._menuCtxCleanup) window._menuCtxCleanup();
             // 컨텍스트 메뉴 제거
             var ctx = document.getElementById('nodeContextMenu');
             if (ctx) ctx.remove();
@@ -3226,8 +3257,10 @@
             if (typeof connections !== 'undefined') {
                 for (var c = 0; c < connections.length; c++) {
                     var conn = connections[c];
-                    if (conn.from === node.id || conn.to === node.id) {
-                        var other = conn.from === node.id ? conn.to : conn.from;
+                    var cFrom = typeof connFrom === 'function' ? connFrom(conn) : conn.nodeA;
+                    var cTo = typeof connTo === 'function' ? connTo(conn) : conn.nodeB;
+                    if (cFrom === node.id || cTo === node.id) {
+                        var other = cFrom === node.id ? cTo : cFrom;
                         var otherNode = nodes.find(function(n){ return n.id === other; });
                         if (otherNode) {
                             var oLat = (otherNode.lat - node.lat) * 111320;
@@ -3478,43 +3511,95 @@
         };
 
         // ── 함체 자동 각도 계산 ──
+        // 케이블에서 함체와 가장 가까운 전주(또는 장비) 좌표 반환
+        function _getConnNearestTarget(conn, junctionNode) {
+            var off = window._polePreviewOffset || { dLat: 0, dLng: 0 };
+            var otherNodeId = conn.nodeA === junctionNode.id ? conn.nodeB : conn.nodeA;
+
+            // poleRoute가 있으면 함체에 가장 가까운 전주 사용
+            if (conn.poleRoute && conn.poleRoute.length > 0) {
+                // OUT: 함체가 from이면 첫 번째 전주, IN: 함체가 to이면 마지막 전주
+                var isFrom = connFrom(conn) === junctionNode.id;
+                var nearPoleId = isFrom ? conn.poleRoute[0] : conn.poleRoute[conn.poleRoute.length - 1];
+                var nearPole = nodes.find(function(n) { return n.id === nearPoleId; });
+                if (nearPole) return { lat: nearPole.lat + off.dLat, lng: nearPole.lng + off.dLng };
+            }
+
+            // waypoints에서 snappedPole 기반 가까운 전주
+            if (conn.waypoints && conn.waypoints.length > 0) {
+                var isFrom2 = connFrom(conn) === junctionNode.id;
+                var wp = isFrom2 ? conn.waypoints[0] : conn.waypoints[conn.waypoints.length - 1];
+                if (wp && wp.snappedPole) {
+                    var sp = nodes.find(function(n) { return n.id === wp.snappedPole; });
+                    if (sp) return { lat: sp.lat + off.dLat, lng: sp.lng + off.dLng };
+                }
+                if (wp) return { lat: wp.lat, lng: wp.lng };
+            }
+
+            // 폴백: 반대편 장비 좌표
+            var otherNode = nodes.find(function(n) { return n.id === otherNodeId; });
+            return otherNode ? { lat: otherNode.lat, lng: otherNode.lng } : null;
+        }
+
         window.calcJunctionAutoAngle = function(node) {
             var conns = connections.filter(function(c) { return c.nodeA === node.id || c.nodeB === node.id; });
-            // OUT 연결 찾기
-            var outConn = conns.find(function(c) {
-                var nA = nodes.find(function(n) { return n.id === c.nodeA; });
-                var dir = (nA && nA.connDirections && nA.connDirections[c.id]) || 'out';
-                var fromId = dir === 'out' ? c.nodeA : c.nodeB;
-                return fromId === node.id;
-            });
+
+            // OUT 연결 찾기 (1순위)
+            var outConn = conns.find(function(c) { return connFrom(c) === node.id; });
+            // IN 연결 찾기 (2순위)
+            var inConn = conns.find(function(c) { return connTo(c) === node.id; });
+
+            // OUT 방향 우선: OUT 포트(x=38, 오른쪽)가 가장 가까운 전주를 향하도록
             if (outConn) {
-                var toId = outConn.nodeA === node.id ? outConn.nodeB : outConn.nodeA;
-                var toNode = nodes.find(function(n) { return n.id === toId; });
-                if (toNode) {
-                    var dLat = toNode.lat - node.lat;
-                    var dLng = toNode.lng - node.lng;
-                    // OUT 포트가 아래쪽(svgY=+18)이므로 OUT→대상 방향으로 회전
-                    var angle = Math.atan2(dLng, dLat) * 180 / Math.PI - 180;
-                    return angle;
+                var outTarget = _getConnNearestTarget(outConn, node);
+                if (outTarget) {
+                    var dLat = outTarget.lat - node.lat;
+                    var dLng = outTarget.lng - node.lng;
+                    // OUT은 오른쪽(x+방향) → 회전 0도일 때 동쪽
+                    // atan2(dLng, dLat)는 북쪽=0, 시계방향 증가
+                    // CSS rotate: 시계방향, 0도=원래위치(IN=왼,OUT=오)
+                    // OUT이 target을 향하려면: angle = atan2(dLng, dLat) * 180/PI - 90
+                    var outAngle = Math.atan2(dLng, dLat) * 180 / Math.PI - 90;
+
+                    // IN이 있으면 IN-함체-OUT 직선 검증 (IN은 반대편이어야 함)
+                    if (inConn) {
+                        var inTarget = _getConnNearestTarget(inConn, node);
+                        if (inTarget) {
+                            var inDLat = inTarget.lat - node.lat;
+                            var inDLng = inTarget.lng - node.lng;
+                            // IN과 OUT의 평균 축 방향으로 더 정확한 각도 계산
+                            // OUT 방향 벡터
+                            var outLen = Math.sqrt(dLat * dLat + dLng * dLng) || 1;
+                            var outDx = dLng / outLen, outDy = dLat / outLen;
+                            // IN 방향 벡터 (함체에서 IN 소스쪽으로)
+                            var inLen = Math.sqrt(inDLat * inDLat + inDLng * inDLng) || 1;
+                            var inDx = inDLng / inLen, inDy = inDLat / inLen;
+                            // IN→함체→OUT 축: OUT방향 - IN방향 (반대이므로 더하면 축 벡터)
+                            var axisX = outDx - inDx;
+                            var axisY = outDy - inDy;
+                            var axisLen = Math.sqrt(axisX * axisX + axisY * axisY);
+                            if (axisLen > 0.1) {
+                                // 축 방향으로 OUT 각도 재계산
+                                outAngle = Math.atan2(axisX, axisY) * 180 / Math.PI - 90;
+                            }
+                        }
+                    }
+                    return outAngle;
                 }
             }
-            // IN만 있으면 IN 반대 방향
-            var inConn = conns.find(function(c) {
-                var nA = nodes.find(function(n) { return n.id === c.nodeA; });
-                var dir = (nA && nA.connDirections && nA.connDirections[c.id]) || 'out';
-                var fromId = dir === 'out' ? c.nodeA : c.nodeB;
-                return fromId !== node.id;
-            });
+
+            // OUT 없으면 IN 방향만으로 계산
             if (inConn) {
-                var fromId2 = inConn.nodeA === node.id ? inConn.nodeB : inConn.nodeA;
-                var fromNode2 = nodes.find(function(n) { return n.id === fromId2; });
-                if (fromNode2) {
-                    var dLat2 = fromNode2.lat - node.lat;
-                    var dLng2 = fromNode2.lng - node.lng;
-                    var angle2 = Math.atan2(dLng2, dLat2) * 180 / Math.PI;
-                    return angle2;
+                var inTarget2 = _getConnNearestTarget(inConn, node);
+                if (inTarget2) {
+                    var dLat2 = inTarget2.lat - node.lat;
+                    var dLng2 = inTarget2.lng - node.lng;
+                    // IN 포트(x=2, 왼쪽)가 소스를 향하도록
+                    // IN이 왼쪽이므로: angle = atan2(dLng, dLat) * 180/PI + 90
+                    return Math.atan2(dLng2, dLat2) * 180 / Math.PI + 90;
                 }
             }
+
             return 0;
         };
 

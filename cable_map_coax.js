@@ -116,24 +116,19 @@ function showCoaxEquipMenu(screenX, screenY, lat, lng) {
         // 증폭기
         if (typeKey === 'coax_tba') {
             return '<svg width="'+_S+'" height="'+_S+'" viewBox="0 0 22 22">' +
-                '<clipPath id="mtL"><rect x="0" y="0" width="11" height="22"/></clipPath>' +
-                '<clipPath id="mtR"><rect x="11" y="0" width="11" height="22"/></clipPath>' +
-                '<circle cx="11" cy="11" r="9" fill="#e53935" clip-path="url(#mtL)"/>' +
-                '<circle cx="11" cy="11" r="9" fill="#1a6fd4" clip-path="url(#mtR)"/>' +
+                '<circle cx="11" cy="11" r="9" fill="#e53935" style="clip-path:inset(0 50% 0 0)"/>' +
+                '<circle cx="11" cy="11" r="9" fill="#1a6fd4" style="clip-path:inset(0 0 0 50%)"/>' +
                 '<circle cx="11" cy="11" r="9" fill="none" stroke="#333" stroke-width="1.5"/></svg>';
         }
         if (typeKey === 'coax_tda') {
             return '<svg width="'+_S+'" height="'+_S+'" viewBox="0 0 22 22">' +
-                '<clipPath id="mdL"><rect x="0" y="0" width="11" height="22"/></clipPath>' +
-                '<clipPath id="mdR"><rect x="11" y="0" width="11" height="22"/></clipPath>' +
-                '<circle cx="11" cy="11" r="9" fill="#1a6fd4" clip-path="url(#mdL)"/>' +
-                '<circle cx="11" cy="11" r="9" fill="#2E7D32" clip-path="url(#mdR)"/>' +
+                '<circle cx="11" cy="11" r="9" fill="#1a6fd4" style="clip-path:inset(0 50% 0 0)"/>' +
+                '<circle cx="11" cy="11" r="9" fill="#2E7D32" style="clip-path:inset(0 0 0 50%)"/>' +
                 '<circle cx="11" cy="11" r="9" fill="none" stroke="#333" stroke-width="1.5"/></svg>';
         }
         if (typeKey === 'coax_ea') {
             return '<svg width="'+_S+'" height="'+_S+'" viewBox="0 0 22 22">' +
-                '<clipPath id="meL"><rect x="0" y="0" width="11" height="22"/></clipPath>' +
-                '<circle cx="11" cy="11" r="9" fill="#e53935" clip-path="url(#meL)"/>' +
+                '<circle cx="11" cy="11" r="9" fill="#e53935" style="clip-path:inset(0 50% 0 0)"/>' +
                 '<circle cx="11" cy="11" r="9" fill="none" stroke="#333" stroke-width="1.5"/></svg>';
         }
         // 분배기
@@ -144,18 +139,14 @@ function showCoaxEquipMenu(screenX, screenY, lat, lng) {
         }
         if (typeKey === 'coax_3sp') {
             return '<svg width="'+_S+'" height="'+_S+'" viewBox="0 0 22 22">' +
-                '<clipPath id="m3L"><rect x="0" y="0" width="11" height="22"/></clipPath>' +
-                '<clipPath id="m3R"><rect x="11" y="0" width="11" height="22"/></clipPath>' +
-                '<circle cx="11" cy="11" r="9" fill="#e53935" clip-path="url(#m3L)"/>' +
-                '<circle cx="11" cy="11" r="9" fill="#1a6fd4" clip-path="url(#m3R)"/>' +
+                '<circle cx="11" cy="11" r="9" fill="#e53935" style="clip-path:inset(0 50% 0 0)"/>' +
+                '<circle cx="11" cy="11" r="9" fill="#1a6fd4" style="clip-path:inset(0 0 0 50%)"/>' +
                 '<circle cx="11" cy="11" r="9" fill="none" stroke="#e53935" stroke-width="2"/></svg>';
         }
         if (typeKey === 'coax_dc08') {
             return '<svg width="'+_S+'" height="'+_S+'" viewBox="0 0 22 22">' +
-                '<clipPath id="mcL"><rect x="0" y="0" width="11" height="22"/></clipPath>' +
-                '<clipPath id="mcR"><rect x="11" y="0" width="11" height="22"/></clipPath>' +
-                '<circle cx="11" cy="11" r="9" fill="#e53935" clip-path="url(#mcL)"/>' +
-                '<circle cx="11" cy="11" r="9" fill="#1a6fd4" clip-path="url(#mcR)"/>' +
+                '<circle cx="11" cy="11" r="9" fill="#e53935" style="clip-path:inset(0 50% 0 0)"/>' +
+                '<circle cx="11" cy="11" r="9" fill="#1a6fd4" style="clip-path:inset(0 0 0 50%)"/>' +
                 '<circle cx="11" cy="11" r="9" fill="none" stroke="#333" stroke-width="1.5"/></svg>';
         }
         // 탭
@@ -429,7 +420,7 @@ function coaxPlaceOnPole(poleNode) {
 
 function _coaxDoPlace(poleNode, tapValue) {
     var equipNode = {
-        id: 'coax_' + Date.now().toString(),
+        id: 'coax_' + _genId(),
         type: _coaxPlacingType,
         lat: poleNode.lat,
         lng: poleNode.lng,
@@ -552,10 +543,8 @@ function getCoaxMarkerHTML(type, name, coaxStatus) {
     if (type === 'coax_tba') {
         // TBA: 좌빨 우파 반원
         return '<svg width="' + S + '" height="' + S + '" viewBox="0 0 22 22">' +
-            '<clipPath id="tbaL"><rect x="0" y="0" width="11" height="22"/></clipPath>' +
-            '<clipPath id="tbaR"><rect x="11" y="0" width="11" height="22"/></clipPath>' +
-            '<circle cx="11" cy="11" r="9" fill="#e53935" clip-path="url(#tbaL)"/>' +
-            '<circle cx="11" cy="11" r="9" fill="#1a6fd4" clip-path="url(#tbaR)"/>' +
+            '<circle cx="11" cy="11" r="9" fill="#e53935" style="clip-path:inset(0 50% 0 0)"/>' +
+            '<circle cx="11" cy="11" r="9" fill="#1a6fd4" style="clip-path:inset(0 0 0 50%)"/>' +
             '<circle cx="11" cy="11" r="9" fill="none" stroke="#333" stroke-width="1.5"/>' +
             '</svg>' +
             '<div style="font-size:'+FS+'px;color:#333;text-align:center;font-weight:bold;white-space:nowrap;position:absolute;left:50%;transform:translateX(-50%);top:'+S+'px;">' + label + '</div>';
@@ -563,10 +552,8 @@ function getCoaxMarkerHTML(type, name, coaxStatus) {
     if (type === 'coax_tda') {
         // TDA: 좌파 우초록 반원
         return '<svg width="' + S + '" height="' + S + '" viewBox="0 0 22 22">' +
-            '<clipPath id="tdaL"><rect x="0" y="0" width="11" height="22"/></clipPath>' +
-            '<clipPath id="tdaR"><rect x="11" y="0" width="11" height="22"/></clipPath>' +
-            '<circle cx="11" cy="11" r="9" fill="#1a6fd4" clip-path="url(#tdaL)"/>' +
-            '<circle cx="11" cy="11" r="9" fill="#2E7D32" clip-path="url(#tdaR)"/>' +
+            '<circle cx="11" cy="11" r="9" fill="#1a6fd4" style="clip-path:inset(0 50% 0 0)"/>' +
+            '<circle cx="11" cy="11" r="9" fill="#2E7D32" style="clip-path:inset(0 0 0 50%)"/>' +
             '<circle cx="11" cy="11" r="9" fill="none" stroke="#333" stroke-width="1.5"/>' +
             '</svg>' +
             '<div style="font-size:'+FS+'px;color:#333;text-align:center;font-weight:bold;white-space:nowrap;position:absolute;left:50%;transform:translateX(-50%);top:'+S+'px;">' + label + '</div>';
@@ -574,8 +561,7 @@ function getCoaxMarkerHTML(type, name, coaxStatus) {
     if (type === 'coax_ea') {
         // EA: 빨간 반원 (왼쪽만)
         return '<svg width="' + S + '" height="' + S + '" viewBox="0 0 22 22">' +
-            '<clipPath id="eaL"><rect x="0" y="0" width="11" height="22"/></clipPath>' +
-            '<circle cx="11" cy="11" r="9" fill="#e53935" clip-path="url(#eaL)"/>' +
+            '<circle cx="11" cy="11" r="9" fill="#e53935" style="clip-path:inset(0 50% 0 0)"/>' +
             '<circle cx="11" cy="11" r="9" fill="none" stroke="#333" stroke-width="1.5"/>' +
             '</svg>' +
             '<div style="font-size:'+FS+'px;color:#333;text-align:center;font-weight:bold;white-space:nowrap;position:absolute;left:50%;transform:translateX(-50%);top:'+S+'px;">' + label + '</div>';
@@ -593,20 +579,16 @@ function getCoaxMarkerHTML(type, name, coaxStatus) {
     if (type === 'coax_3sp') {
         // 3WAY: 빨+파 원 + 빨 테두리
         return '<svg width="' + S + '" height="' + S + '" viewBox="0 0 22 22">' +
-            '<clipPath id="3wL"><rect x="0" y="0" width="11" height="22"/></clipPath>' +
-            '<clipPath id="3wR"><rect x="11" y="0" width="11" height="22"/></clipPath>' +
-            '<circle cx="11" cy="11" r="9" fill="#e53935" clip-path="url(#3wL)"/>' +
-            '<circle cx="11" cy="11" r="9" fill="#1a6fd4" clip-path="url(#3wR)"/>' +
+            '<circle cx="11" cy="11" r="9" fill="#e53935" style="clip-path:inset(0 50% 0 0)"/>' +
+            '<circle cx="11" cy="11" r="9" fill="#1a6fd4" style="clip-path:inset(0 0 0 50%)"/>' +
             '<circle cx="11" cy="11" r="9" fill="none" stroke="#e53935" stroke-width="2"/>' +
             '</svg>';
     }
     if (type === 'coax_dc08') {
         // DC08: 빨+파 반반 원
         return '<svg width="' + S + '" height="' + S + '" viewBox="0 0 22 22">' +
-            '<clipPath id="dcL"><rect x="0" y="0" width="11" height="22"/></clipPath>' +
-            '<clipPath id="dcR"><rect x="11" y="0" width="11" height="22"/></clipPath>' +
-            '<circle cx="11" cy="11" r="9" fill="#e53935" clip-path="url(#dcL)"/>' +
-            '<circle cx="11" cy="11" r="9" fill="#1a6fd4" clip-path="url(#dcR)"/>' +
+            '<circle cx="11" cy="11" r="9" fill="#e53935" style="clip-path:inset(0 50% 0 0)"/>' +
+            '<circle cx="11" cy="11" r="9" fill="#1a6fd4" style="clip-path:inset(0 0 0 50%)"/>' +
             '<circle cx="11" cy="11" r="9" fill="none" stroke="#333" stroke-width="1.5"/>' +
             '</svg>';
     }
@@ -841,18 +823,17 @@ function coaxCloseCableTypeModal() {
 function coaxConfirmSamePoleConnect(cableSize) {
     var fromNode = window._coaxSamePoleFrom;
     var toNode = window._coaxSamePoleTo;
-    coaxCloseCableTypeModal();
-    if (!fromNode || !toNode) return;
-
     var lineTypeBtn = document.getElementById('spLineNew');
     var lineType = (lineTypeBtn && lineTypeBtn.classList.contains('selected')) ? 'new' : 'existing';
+    coaxCloseCableTypeModal();
+    if (!fromNode || !toNode) return;
 
     // connDirections 설정
     if (!fromNode.connDirections) fromNode.connDirections = {};
     if (!toNode.connDirections) toNode.connDirections = {};
     if (!toNode.inOrder) toNode.inOrder = [];
 
-    var connId = Date.now().toString();
+    var connId = _genId();
     fromNode.connDirections[connId] = 'out';
     toNode.connDirections[connId] = 'in';
     toNode.inOrder.push(connId);
@@ -1068,6 +1049,7 @@ function _coaxEnterBoundaryEdit(onuNode) {
 function _coaxExitBoundaryEdit() {
     _coaxClearEditHandles();
     _coaxBoundaryEditOnu = null;
+    if (_coaxBdragActive) map.setDraggable(true);
     _coaxBdragActive = false;
     _coaxBdragIdx = -1;
 }
@@ -1184,13 +1166,13 @@ document.addEventListener('mousemove', function(e) {
 });
 
 document.addEventListener('mouseup', function() {
-    if (_coaxBdragActive && _coaxBoundaryEditOnu) {
+    if (_coaxBdragActive) {
         map.setDraggable(true);
-        _coaxBdragActive = false;
-        _coaxBdragIdx = -1;
-        saveData();
-        // 중간점 핸들, 라벨 위치 갱신
-        _coaxRenderBoundaryPolygon(_coaxBoundaryEditOnu);
+        if (_coaxBoundaryEditOnu) {
+            saveData();
+            // 중간점 핸들, 라벨 위치 갱신
+            _coaxRenderBoundaryPolygon(_coaxBoundaryEditOnu);
+        }
     }
     _coaxBdragActive = false;
     _coaxBdragIdx = -1;
@@ -1362,6 +1344,7 @@ function _coaxExitMode() {
     }
     _coaxMode = null;
     _coaxModeOnu = null;
+    _coaxActiveOnu = null;
     _coaxRemoveModeBar();
 }
 
@@ -1376,7 +1359,7 @@ function coaxIsViewFiltered(connection) {
     var toId = typeof connTo === 'function' ? connTo(connection) : connection.nodeB;
     if (cellIds.indexOf(fromId) === -1 && cellIds.indexOf(toId) === -1) return false;
     // 기설 케이블만 표시
-    return connection.coaxStatus !== 'existing';
+    return connection.lineType !== 'existing';
 }
 
 // 셀 소속 동축 장비 ID 목록

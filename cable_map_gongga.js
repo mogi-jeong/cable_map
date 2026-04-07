@@ -13,7 +13,7 @@ function _gongga_v(x) {
 }
 
 function _gongga_numStr(n) {
-    try { return String(parseInt(n)); } catch(e) { return String(n); }
+    try { var p = parseInt(n); return isNaN(p) ? String(n || '') : String(p); } catch(e) { return String(n || ''); }
 }
 
 // ── 전주 파싱 ──
@@ -24,7 +24,7 @@ function gonggaParsePoles(poleList, cableInfo) {
     var 통신선종류 = cInfo.lineType === 'coax' ? 'C' : 'O';
     var equipByPoleId = cInfo.equipByPoleId || {};
     // 장비 타입 → 기기코드 매핑
-    var EQUIP_CODE = { 'onu': '3', 'junction': '6' };
+    var EQUIP_CODE = { 'onu': '3', 'amp': '4', 'tap': '5', 'junction': '6', 'splitter': '7', 'ps': '2', 'ups': '1' };
     var poles = [];
     for (var i = 0; i < poleList.length; i++) {
         var node = poleList[i];
@@ -102,7 +102,8 @@ function gonggaLoadInvs(onLoaded) {
 
 function gonggaBuildApplication(poles, invs, fromNode, toNode) {
     var JUMP_THRESHOLD = 2;
-    var defaults = { 설치단: '2', 사업자: 'A000042286', 용도: '4', 통신선: 'O', 규격: '12' };
+    var regionCode = localStorage.getItem('gonggaBusinessCode') || 'A000042286';
+    var defaults = { 설치단: '2', 사업자: regionCode, 용도: '4', 통신선: 'O', 규격: '12' };
 
     var NCOLS = 34;
     var HEADER_ROW3 = [
@@ -396,7 +397,8 @@ function gonggaBuildApplication(poles, invs, fromNode, toNode) {
 // gonggaBuildApplication과 동일한 Excel 구조 사용
 
 function gonggaBuildFromAIRows(aiRows, invs) {
-    var defaults = { 설치단: '2', 사업자: 'A000042286', 용도: '4', 통신선: 'O', 규격: '12' };
+    var regionCode = localStorage.getItem('gonggaBusinessCode') || 'A000042286';
+    var defaults = { 설치단: '2', 사업자: regionCode, 용도: '4', 통신선: 'O', 규격: '12' };
 
     var NCOLS = 34;
     var HEADER_ROW3 = [
