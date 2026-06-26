@@ -597,6 +597,9 @@
             while (usedSlots.has(rnNum)) rnNum++;
             rn.outputs.push({ nodeIndex, port: portNum, slotNum: rnNum });
             connection.portMapping.push([selectedFromPort, portNum]);
+            // 어느 IN에서 왔는지 기록 (일반 경로 752·772와 동일 — RN 경로에 빠져있던 한 줄)
+            const ucRnDirect = currentWireMapUpstreamConns[selectedFromInIdx];
+            if (ucRnDirect) connection.inFromCableId = ucRnDirect.id;
 
             const fromPorts = getNodePortData(currentWireMapFromNode, null, connections.find(c => isOutConn(c, currentWireMapFromNode.id) && isInConn(c, selectedNode.id)));
             const fromLabel = fromPorts[selectedFromPort - 1] || '';

@@ -226,6 +226,121 @@
         .tb-cancel:hover { background: #c0392b; }
         /* 지도가 툴바 아래서 시작 (서브바 열리면 JS에서 조정) */
         #map { padding-top: 42px; box-sizing: border-box; transition: padding-top 0.15s; }
+
+        /* ── 전주 라벨 검색 패널 ── */
+        #poleSearchPanel {
+            position: fixed; top: 110px; right: 12px; z-index: 9000;
+            width: 340px; max-height: calc(100vh - 130px);
+            background: #fff; border: 1px solid #ccc;
+            border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+            display: flex; flex-direction: column;
+            font-family: "Malgun Gothic", sans-serif;
+        }
+        .psp-header {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 10px 14px; background: #f39c12; color: #fff;
+            border-radius: 8px 8px 0 0; font-weight: 700; font-size: 14px;
+        }
+        .psp-close { cursor: pointer; opacity: 0.85; font-size: 16px; padding: 0 4px; }
+        .psp-close:hover { opacity: 1; }
+        .psp-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
+        .psp-help { font-size: 12px; color: #555; line-height: 1.5; }
+        .psp-help b { color: #d35400; }
+        #poleSearchMultiInput {
+            width: 100%; min-height: 140px; resize: vertical;
+            padding: 8px; font-size: 12px; font-family: monospace;
+            border: 1px solid #bbb; border-radius: 4px; box-sizing: border-box;
+            white-space: pre; overflow: auto;
+        }
+        .psp-buttons { display: flex; gap: 6px; }
+        .psp-btn {
+            flex: 1; padding: 8px 0; border: none; border-radius: 5px;
+            font-size: 13px; font-weight: 700; cursor: pointer; color: #fff;
+        }
+        .psp-btn-show { background: #27ae60; }
+        .psp-btn-show:hover { background: #229954; }
+        .psp-btn-toggle { background: #2980b9; }
+        .psp-btn-toggle:hover { background: #21618c; }
+        .psp-btn-clear { background: #95a5a6; }
+        .psp-btn-clear:hover { background: #7f8c8d; }
+        .psp-btn-dots { background: #8e44ad; }
+        .psp-btn-dots:hover { background: #6c3483; }
+        .psp-btn-dots.active { background: #5b2c6f; }
+        .psp-btn-reset { background: #d68910; }
+        .psp-btn-reset:hover { background: #b9770e; }
+        .psp-btn-fit { background: #16a085; }
+        .psp-btn-fit:hover { background: #117a65; }
+        .psp-summary { font-size: 12px; color: #2c3e50; padding: 6px 8px; background: #ecf0f1; border-radius: 4px; }
+        .psp-summary:empty { display: none; }
+        .psp-missing { font-size: 12px; max-height: 250px; overflow-y: auto; }
+        .psp-missing:empty { display: none; }
+        .psp-missing .mt {
+            display: flex; align-items: center; justify-content: space-between;
+            color: #c0392b; font-weight: 700; margin-bottom: 4px;
+            padding: 4px 6px; background: #fdecea; border-radius: 4px;
+        }
+        .psp-missing .mt button {
+            background: #c0392b; color: #fff; border: none;
+            padding: 3px 8px; font-size: 11px; border-radius: 3px;
+            cursor: pointer; font-weight: 700;
+        }
+        .psp-missing .mt button:hover { background: #a93226; }
+        .psp-missing .mr {
+            display: grid; grid-template-columns: 1fr auto;
+            gap: 4px; padding: 5px 6px; border-bottom: 1px solid #eee;
+            align-items: center;
+        }
+        .psp-missing .mr:last-child { border-bottom: none; }
+        .psp-missing .mr-info { color: #555; font-size: 11px; }
+        .psp-missing .mr-status {
+            font-size: 11px; font-weight: 700; padding: 2px 6px;
+            border-radius: 3px; white-space: nowrap;
+        }
+        .psp-missing .mr-status.unknown { color: #7f8c8d; background: #ecf0f1; cursor: pointer; }
+        .psp-missing .mr-status.unknown:hover { background: #d5dbdb; }
+        .psp-missing .mr-status.found {
+            color: #1e8449; background: #eafaf1; cursor: pointer;
+        }
+        .psp-missing .mr-status.found:hover { background: #d5f5e3; }
+        .psp-missing .mr-status.notfound { color: #c0392b; background: #fdecea; }
+        .psp-missing .mr-status.loading { color: #2980b9; background: #ebf5fb; }
+        /* 매칭 리스트 (클릭 → 전주로 이동) */
+        .psp-matched { font-size: 12px; max-height: 240px; overflow-y: auto; }
+        .psp-matched:empty { display: none; }
+        .psp-matched .mt-head {
+            display: flex; align-items: center; justify-content: space-between;
+            color: #1e8449; font-weight: 700; margin-bottom: 4px;
+            padding: 4px 8px; background: #eafaf1; border-radius: 4px;
+            cursor: pointer; user-select: none;
+        }
+        .psp-matched .mt-head:hover { background: #d5f5e3; }
+        .psp-matched .mt-list { display: none; }
+        .psp-matched.expanded .mt-list { display: block; }
+        .psp-matched .mt-list .mi {
+            display: flex; justify-content: space-between; gap: 8px;
+            padding: 5px 8px; border-bottom: 1px solid #eee;
+            cursor: pointer; transition: background 0.1s;
+        }
+        .psp-matched .mt-list .mi:hover { background: #fff8dc; }
+        .psp-matched .mt-list .mi:last-child { border-bottom: none; }
+        .psp-matched .mt-list .mi-name { font-weight: 700; color: #1a6fd4; }
+        .psp-matched .mt-list .mi-memo { color: #c0392b; font-size: 11px; }
+        .psp-matched .mt-nav { display: flex; gap: 4px; margin-bottom: 6px; }
+        .psp-matched .mt-nav button {
+            flex: 1; padding: 5px 0; border: 1px solid #1e8449;
+            background: #fff; color: #1e8449; font-size: 12px; font-weight: 700;
+            border-radius: 4px; cursor: pointer;
+        }
+        .psp-matched .mt-nav button:hover { background: #eafaf1; }
+        .psp-matched .mt-nav button:disabled { opacity: 0.4; cursor: default; }
+
+        /* ── 현재도면 숨김 모드 (DOM 마커/라벨만 — 케이블/전주 캔버스는 JS에서 스킵) ── */
+        body.hide-all-overlays .custom-div-icon,
+        body.hide-all-overlays .custom-marker,
+        body.hide-all-overlays .span-distance-label,
+        body.hide-all-overlays .pole-label {
+            visibility: hidden !important;
+        }
         /* 로드뷰 전체화면 */
         .roadview-panel {
             display: none;
@@ -1370,6 +1485,16 @@
             </button>
             <input type="file" id="importPollFile" style="display:none;" accept=".json" onchange="importPollData(event)">
             <div class="toolbar-divider"></div>
+            <button class="tb-btn" onclick="reloadAllPoles()" data-tip="전주 데이터 삭제 후 다시 불러오기" style="--tb-accent:#e67e22;">
+                <svg width="22" height="22" viewBox="0 0 40 40">
+                    <circle cx="14" cy="10" r="3.5" fill="none" stroke="#e67e22" stroke-width="2"/>
+                    <line x1="14" y1="13.5" x2="14" y2="34" stroke="#e67e22" stroke-width="2.5" stroke-linecap="round"/>
+                    <line x1="9" y1="32" x2="19" y2="32" stroke="#e67e22" stroke-width="2" stroke-linecap="round"/>
+                    <path d="M28,12 A7,7 0 1,1 28,26" fill="none" stroke="#e67e22" stroke-width="2.5" stroke-linecap="round"/>
+                    <polyline points="24,24 28,28 32,24" fill="none" stroke="#e67e22" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span class="tb-label">전주초기화</span>
+            </button>
             <button class="tb-btn" onclick="deleteAllPoles()" data-tip="전주 전체 삭제" style="--tb-accent:#e74c3c;">
                 <svg width="22" height="22" viewBox="0 0 40 40">
                     <circle cx="15" cy="10" r="4" fill="none" stroke="#e74c3c" stroke-width="2.2"/>
@@ -1432,6 +1557,26 @@
                     <circle cx="20" cy="26" r="1.5" fill="#FF6D00"/>
                 </svg>
                 <span class="tb-label">셀숨김</span>
+            </button>
+            <button class="tb-btn" id="hideAllOverlaysBtn" onclick="toggleAllOverlays()" data-tip="현재 도면 전체 표시/숨기기 (전주/케이블/장비)">
+                <svg width="22" height="22" viewBox="0 0 40 40">
+                    <circle cx="11" cy="11" r="3" fill="none" stroke="#444" stroke-width="2"/>
+                    <line x1="11" y1="14" x2="11" y2="29" stroke="#444" stroke-width="2"/>
+                    <circle cx="29" cy="11" r="3" fill="none" stroke="#444" stroke-width="2"/>
+                    <line x1="29" y1="14" x2="29" y2="29" stroke="#444" stroke-width="2"/>
+                    <line x1="11" y1="20" x2="29" y2="20" stroke="#444" stroke-width="2" stroke-dasharray="3,2"/>
+                    <line id="allOverlaysSlash" x1="6" y1="34" x2="34" y2="6" stroke="#e74c3c" stroke-width="2.5" stroke-linecap="round" display="none"/>
+                </svg>
+                <span class="tb-label">도면숨김</span>
+            </button>
+            <button class="tb-btn" id="poleSearchPanelBtn" onclick="togglePoleSearchPanel()" data-tip="전산화번호/전주번호 다중검색 라벨">
+                <svg width="22" height="22" viewBox="0 0 40 40">
+                    <rect x="4" y="10" width="22" height="12" rx="2" fill="#fff8dc" stroke="#f39c12" stroke-width="2"/>
+                    <text x="6" y="20" font-size="9" font-weight="bold" fill="#d35400" font-family="sans-serif">메모</text>
+                    <line x1="26" y1="22" x2="34" y2="32" stroke="#f39c12" stroke-width="2"/>
+                    <circle cx="34" cy="32" r="2.5" fill="#e74c3c" stroke="#fff" stroke-width="1"/>
+                </svg>
+                <span class="tb-label">라벨검색</span>
             </button>
             <div class="toolbar-divider"></div>
             <div style="display:flex;flex-direction:column;align-items:center;gap:1px;padding:0 4px;" data-tip="병렬 케이블 간격 조정">
@@ -1989,6 +2134,36 @@
 
     <!-- 전주 호버 툴팁 -->
     <div id="poleHoverTooltip"></div>
+
+    <!-- 전주 라벨 다중검색 패널 -->
+    <div id="poleSearchPanel" style="display:none;">
+        <div class="psp-header">
+            <span>🔍 전주 라벨 검색</span>
+            <span class="psp-close" onclick="closePoleSearchPanel()">✕</span>
+        </div>
+        <div class="psp-body">
+            <div class="psp-help">
+                엑셀에서 <b>전산화번호 / 전주번호 / 메모</b> 3열을 복사해 붙여넣으세요.<br>
+                전주번호가 비어 있으면 전산화번호로 검색합니다.
+            </div>
+            <textarea id="poleSearchMultiInput" placeholder="8714Z201&#9;광덕지 34&#9;자가주건식&#10;88223014&#9;구절지 34H3&#9;자가주건식&#10;87222561&#9;&#9;단순정비4"></textarea>
+            <div class="psp-buttons">
+                <button class="psp-btn psp-btn-show" onclick="applyPoleSearch()">표시</button>
+                <button class="psp-btn psp-btn-toggle" onclick="togglePoleSearchLabels()" id="pspToggleBtn">숨기기</button>
+                <button class="psp-btn psp-btn-clear" onclick="clearPoleSearch()">지우기</button>
+            </div>
+            <div class="psp-buttons">
+                <button class="psp-btn psp-btn-dots" onclick="togglePoleSearchDotsOnly()" id="pspDotsBtn">점만 표시</button>
+                <button class="psp-btn psp-btn-reset" onclick="resetPoleSearchPositions()" data-tip="드래그한 라벨 위치 초기화">위치 초기화</button>
+            </div>
+            <div class="psp-buttons">
+                <button class="psp-btn psp-btn-fit" onclick="fitToPoleSearchResults()" data-tip="매칭된 전주가 모두 보이도록 줌/팬">전체 보기</button>
+            </div>
+            <div class="psp-summary" id="pspSummary"></div>
+            <div class="psp-matched" id="pspMatched"></div>
+            <div class="psp-missing" id="pspMissing"></div>
+        </div>
+    </div>
 
     <!-- 전주 임포트 진행바 오버레이 -->
     <div id="importProgressOverlay">

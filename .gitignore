@@ -1,1 +1,20 @@
+# 기존
 poles_output_poll.json
+
+# 의존성 (npm install로 복원)
+node_modules/
+
+# 오프라인 지도 데이터/도구 (용량 큼, 재생성 가능)
+maps/
+tools/
+*.pmtiles
+*.exe
+
+# 벤치마크 원본 (한마루) — 2.8GB, 저장소에 안 넣음
+SmartCable/
+
+# 임시/설명용
+_트리구조_설명.html
+
+# 로컬 설정
+.claude/settings.json

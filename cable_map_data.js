@@ -285,6 +285,7 @@
             Object.keys(markers).forEach(function(id) { if (markers[id]) markers[id].setMap(null); delete markers[id]; });
             if (typeof renderAllNodes === 'function') renderAllNodes();
             if (typeof renderAllConnections === 'function') renderAllConnections();
+            if (typeof drawPoleCanvas === 'function') drawPoleCanvas();
             if (typeof showStatus === 'function') showStatus('되돌렸습니다 (Ctrl+Z)');
         }
 

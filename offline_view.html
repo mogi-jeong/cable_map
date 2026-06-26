@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>오프라인 전주 뷰어 (MapLibre)</title>
+<link rel="stylesheet" href="node_modules/maplibre-gl/dist/maplibre-gl.css">
+<style>
+  html, body { margin: 0; height: 100%; font-family: "Malgun Gothic", "Segoe UI", sans-serif; }
+  #map { position: absolute; inset: 0; background: #dfe4ea; }
+
+  #topbar {
+    position: absolute; top: 10px; left: 10px; z-index: 5;
+    background: white; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.18);
+    padding: 8px 12px; display: flex; align-items: center; gap: 10px; font-size: 13px;
+  }
+  #topbar b { color: #1a6fd4; }
+  .tb-btn { padding: 5px 10px; border: 1px solid #cbd5e1; border-radius: 7px; background: #f8fafc; cursor: pointer; font-size: 12.5px; }
+  #mapStatus { color: #888; font-size: 12px; }
+
+  #searchPanel {
+    position: absolute; top: 10px; right: 10px; z-index: 5; width: 320px;
+    background: white; border-radius: 12px; box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+    display: flex; flex-direction: column; max-height: calc(100% - 20px);
+  }
+  #searchPanel .sp-head { padding: 12px 14px; border-bottom: 1px solid #eee; font-weight: 700; color: #1e293b; display: flex; justify-content: space-between; align-items: center; }
+  #searchPanel .sp-body { padding: 12px 14px; overflow: auto; }
+  #searchPanel textarea { width: 100%; height: 90px; box-sizing: border-box; border: 1px solid #cbd5e1; border-radius: 8px; padding: 8px; font-size: 12px; resize: vertical; font-family: monospace; }
+  .sp-hint { font-size: 11px; color: #94a3b8; margin: 6px 0 8px; line-height: 1.5; }
+  .sp-row { display: flex; gap: 6px; margin-top: 8px; }
+  .sp-row button { flex: 1; padding: 8px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 12.5px; }
+  .b-show { background: #f39c12; color: white; }
+  .b-clear { background: #f0f0f0; color: #555; }
+  .b-fit { background: #1a6fd4; color: white; }
+  #spSummary { font-size: 12px; margin-top: 10px; color: #334155; }
+  #spMissing { margin-top: 6px; font-size: 11.5px; color: #c0392b; }
+  .collapsed .sp-body { display: none; }
+  .sp-toggle { cursor: pointer; color: #888; font-weight: normal; font-size: 12px; }
+
+  .search-label { background: rgba(255,255,255,0.97); border: 1.5px solid #e74c3c; border-radius: 5px; padding: 3px 7px; box-shadow: 0 1px 4px rgba(0,0,0,0.25); font-size: 12px; white-space: nowrap; pointer-events: none; }
+  .search-label .nm { font-weight: 700; color: #1a6fd4; }
+  .search-label .mo { color: #c0392b; font-size: 11px; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<div id="topbar">
+  <b>📍 오프라인 전주 뷰어</b>
+  <label style="font-size:12px;color:#555;">테마
+    <select id="themeSel" class="tb-btn" style="padding:4px 6px;">
+      <option value="light">밝게</option>
+      <option value="grayscale">회색</option>
+      <option value="white">흰색</option>
+      <option value="dark">어둡게</option>
+      <option value="black">검정</option>
+    </select>
+  </label>
+  <span id="mapStatus">지도 로딩 중…</span>
+</div>
+
+<div id="searchPanel">
+  <div class="sp-head">
+    <span>🔍 전주 라벨 검색</span>
+    <span class="sp-toggle" id="spToggle">접기</span>
+  </div>
+  <div class="sp-body">
+    <textarea id="searchInput" placeholder="엑셀에서 복사해 붙여넣기 (탭 구분)&#10;전산화번호&#9;전주번호&#9;메모&#10;8714Z201&#9;광덕지 34&#9;자가주건식"></textarea>
+    <div class="sp-hint">전산화번호 · 전주번호 · 메모 3열. 전주번호가 비면 전산화번호로 검색합니다.</div>
+    <div class="sp-row">
+      <button class="b-show" id="btnShow">표시</button>
+      <button class="b-fit" id="btnFit">전체보기</button>
+      <button class="b-clear" id="btnClear">지우기</button>
+    </div>
+    <div id="spSummary"></div>
+    <div id="spMissing"></div>
+  </div>
+</div>
+
+<script src="node_modules/maplibre-gl/dist/maplibre-gl.js"></script>
+<script src="node_modules/pmtiles/dist/pmtiles.js"></script>
+<script src="node_modules/protomaps-themes-base/dist/protomaps-themes-base.js"></script>
+<script>
+(function () {
+  'use strict';
+  var PMTILES_URL = 'maps/region.pmtiles';
+  var DB_NAME = 'cableMapDB', DB_VER = 2, STORE = 'poles';
+
+  function setMapStatus(t) { document.getElementById('mapStatus').textContent = t; }
+  function esc(s) { return (s || '').replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function validCoord(n) { return isFinite(n.lat) && isFinite(n.lng); }
+
+  // ===== MapLibre + PMTiles =====
+  maplibregl.addProtocol('pmtiles', new pmtiles.Protocol().tile);
+  var currentTheme = 'light';
+  function makeStyle(theme) {
+    return {
+      version: 8,
+      sources: { protomaps: { type: 'vector', url: 'pmtiles://' + PMTILES_URL, attribution: '© OpenStreetMap' } },
+      layers: protomaps_themes_base.noLabels('protomaps', theme)
+    };
+  }
+  var map = new maplibregl.Map({ container: 'map', style: makeStyle(currentTheme), center: [128.9, 37.35], zoom: 11 });
+  map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-left');
+  map.on('error', function (e) { if (e && e.error) setMapStatus('지도 오류: ' + e.error.message); });
+
+  var polesGeoJSON = { type: 'FeatureCollection', features: [] };
+  var matchedGeoJSON = { type: 'FeatureCollection', features: [] };
+  var matchedMarkers = [];
+
+  // 스타일이 (재)로드될 때마다 전주 레이어 다시 추가 (테마 변경 대응)
+  function addDataLayers() {
+    if (!map.getSource('poles')) {
+      map.addSource('poles', { type: 'geojson', data: polesGeoJSON });
+      map.addLayer({
+        id: 'poles-dots', type: 'circle', source: 'poles',
+        paint: {
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 2.2, 14, 3.8, 17, 6],
+          'circle-color': ['match', ['get', 't'], 'pole_new', '#e53935', 'pole_removed', '#333333', 'pole_private', '#9c27b0', '#1a6fd4'],
+          'circle-stroke-color': '#ffffff', 'circle-stroke-width': 1.2
+        }
+      });
+    }
+    if (!map.getSource('matched')) {
+      map.addSource('matched', { type: 'geojson', data: matchedGeoJSON });
+      map.addLayer({
+        id: 'matched-dots', type: 'circle', source: 'matched',
+        paint: {
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 5, 17, 9],
+          'circle-color': '#f39c12', 'circle-stroke-color': '#e67e22', 'circle-stroke-width': 2
+        }
+      });
+    }
+  }
+  map.on('style.load', addDataLayers);
+
+  // 전주 클릭 → 팝업
+  function bindPoleClick() {
+    map.on('click', 'poles-dots', function (e) {
+      var p = e.features[0].properties;
+      new maplibregl.Popup({ offset: 8 }).setLngLat(e.lngLat)
+        .setHTML('<b style="color:#1a6fd4">' + esc(p.name || '(이름없음)') + '</b>' + (p.sn ? '<br><span style="color:#888">' + esc(p.sn) + '</span>' : ''))
+        .addTo(map);
+    });
+    map.on('mouseenter', 'poles-dots', function () { map.getCanvas().style.cursor = 'pointer'; });
+    map.on('mouseleave', 'poles-dots', function () { map.getCanvas().style.cursor = ''; });
+  }
+  map.once('load', bindPoleClick);
+
+  // ===== IndexedDB =====
+  function openDB() {
+    return new Promise(function (resolve, reject) {
+      var req = indexedDB.open(DB_NAME, DB_VER);
+      req.onupgradeneeded = function (e) {
+        var db = e.target.result;
+        if (!db.objectStoreNames.contains(STORE)) {
+          var os = db.createObjectStore(STORE, { keyPath: 'id' });
+          os.createIndex('lat', 'lat', { unique: false });
+          os.createIndex('lng', 'lng', { unique: false });
+        }
+      };
+      req.onsuccess = function () { resolve(req.result); };
+      req.onerror = function () { reject(req.error); };
+    });
+  }
+  function getAllPoles(db) {
+    return new Promise(function (resolve, reject) {
+      var r = db.transaction(STORE, 'readonly').objectStore(STORE).getAll();
+      r.onsuccess = function () { resolve(r.result || []); };
+      r.onerror = function () { reject(r.error); };
+    });
+  }
+
+  // ===== 검색 인덱스 =====
+  function normKey(s) { return (s || '').replace(/[\s\-_]/g, '').toUpperCase(); }
+  function extractSN(memo) { var m = (memo || '').match(/전산화번호\s*[:：]?\s*([A-Za-z0-9]+)/); return m ? m[1] : ''; }
+  function parseInput(text) {
+    var rows = [], lines = (text || '').split(/\r?\n/);
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i]; if (!line.trim()) continue;
+      var parts;
+      if (line.indexOf('\t') !== -1) parts = line.split('\t');
+      else if (/[,;]/.test(line)) parts = line.split(/[,;]/);
+      else if (/\s{2,}/.test(line)) parts = line.split(/\s{2,}/);
+      else parts = [line];
+      var sn = (parts[0] || '').trim(), name = (parts[1] || '').trim(), memo = (parts[2] || '').trim();
+      if (!sn && !name) continue;
+      rows.push({ sn: sn, name: name, memo: memo });
+    }
+    return rows;
+  }
+  var DB = null, allPoles = [], byName = null, bySN = null;
+  function buildIndex() {
+    byName = {}; bySN = {};
+    allPoles.forEach(function (n) {
+      if (n.name) { var k = normKey(n.name); if (!byName[k]) byName[k] = n; }
+      var sn = extractSN(n.memo); if (sn) { var ks = normKey(sn); if (!bySN[ks]) bySN[ks] = n; }
+    });
+  }
+
+  // ===== 검색 적용 =====
+  function applySearch() {
+    if (!DB) { alert('전주 데이터(IndexedDB)를 불러오지 못했습니다. cable_map을 열던 같은 주소(Live Server)로 여세요.'); return; }
+    var rows = parseInput(document.getElementById('searchInput').value);
+    matchedGeoJSON.features = [];
+    matchedMarkers.forEach(function (m) { m.remove(); }); matchedMarkers = [];
+    var matchedIds = {}, missing = [], noCoord = [], coords = [];
+    rows.forEach(function (r) {
+      var node = null;
+      var nk = normKey(r.name); if (nk && byName[nk]) node = byName[nk];
+      if (!node) { var sk = normKey(r.sn); if (sk && bySN[sk]) node = bySN[sk]; }
+      if (!node) { missing.push(r.name || r.sn); return; }
+      if (matchedIds[node.id]) return;
+      matchedIds[node.id] = true;
+      if (!validCoord(node)) { noCoord.push(r.name || r.sn); return; }
+      var labelName = r.name || node.name || r.sn;
+      matchedGeoJSON.features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [node.lng, node.lat] }, properties: {} });
+      coords.push([node.lng, node.lat]);
+      var div = document.createElement('div');
+      div.className = 'search-label';
+      div.innerHTML = '<div class="nm">' + esc(labelName) + '</div>' + (r.memo ? '<div class="mo">' + esc(r.memo) + '</div>' : '');
+      matchedMarkers.push(new maplibregl.Marker({ element: div, anchor: 'left', offset: [8, 0] }).setLngLat([node.lng, node.lat]).addTo(map));
+    });
+    if (map.getSource('matched')) map.getSource('matched').setData(matchedGeoJSON);
+    document.getElementById('spSummary').innerHTML =
+      '입력 ' + rows.length + '건 → <b style="color:#27ae60">매칭 ' + (coords.length + noCoord.length) + '</b> · <b style="color:#c0392b">미발견 ' + missing.length + '</b>'
+      + (noCoord.length ? '<br><b style="color:#e67e22">좌표없음 ' + noCoord.length + '개</b> — DB엔 있으나 좌표 없음' : '');
+    document.getElementById('spMissing').innerHTML = missing.length ? '<b>미발견:</b>' + missing.map(function (m) { return '<div>· ' + esc(m) + '</div>'; }).join('') : '';
+    if (coords.length) fitToCoords(coords);
+  }
+  function fitToCoords(coords) {
+    var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    coords.forEach(function (c) { if (c[0] < minX) minX = c[0]; if (c[0] > maxX) maxX = c[0]; if (c[1] < minY) minY = c[1]; if (c[1] > maxY) maxY = c[1]; });
+    if (isFinite(minX)) map.fitBounds([[minX, minY], [maxX, maxY]], { padding: 80, maxZoom: 17, duration: 600 });
+  }
+  function clearSearch() {
+    matchedGeoJSON.features = [];
+    if (map.getSource('matched')) map.getSource('matched').setData(matchedGeoJSON);
+    matchedMarkers.forEach(function (m) { m.remove(); }); matchedMarkers = [];
+    document.getElementById('spSummary').innerHTML = ''; document.getElementById('spMissing').innerHTML = '';
+  }
+
+  document.getElementById('btnShow').onclick = applySearch;
+  document.getElementById('btnFit').onclick = function () { if (matchedGeoJSON.features.length) fitToCoords(matchedGeoJSON.features.map(function (f) { return f.geometry.coordinates; })); };
+  document.getElementById('btnClear').onclick = clearSearch;
+  document.getElementById('spToggle').onclick = function () {
+    var p = document.getElementById('searchPanel'); p.classList.toggle('collapsed');
+    this.textContent = p.classList.contains('collapsed') ? '펼치기' : '접기';
+  };
+  document.getElementById('themeSel').onchange = function () {
+    currentTheme = this.value;
+    map.setStyle(makeStyle(currentTheme)); // style.load 에서 전주 레이어 재추가됨
+    setMapStatus('테마: ' + currentTheme);
+  };
+
+  // ===== 시작 =====
+  openDB().then(function (db) { DB = db; return getAllPoles(db); }).then(function (poles) {
+    allPoles = poles || [];
+    buildIndex();
+    polesGeoJSON.features = allPoles.filter(validCoord).map(function (n) {
+      return { type: 'Feature', geometry: { type: 'Point', coordinates: [n.lng, n.lat] }, properties: { name: n.name || '', sn: extractSN(n.memo), t: n.type || '' } };
+    });
+    if (map.getSource('poles')) map.getSource('poles').setData(polesGeoJSON);
+    setMapStatus('전주 ' + polesGeoJSON.features.length + '개 로드' + (allPoles.length !== polesGeoJSON.features.length ? ' (좌표없음 ' + (allPoles.length - polesGeoJSON.features.length) + ' 제외)' : ''));
+    if (polesGeoJSON.features.length) fitToCoords(polesGeoJSON.features.map(function (f) { return f.geometry.coordinates; }));
+    else setMapStatus('전주 데이터 없음 — cable_map을 임포트한 같은 주소로 여세요');
+  }).catch(function (err) { setMapStatus('전주 DB 열기 실패: ' + err.message); });
+})();
+</script>
+</body>
+</html>
